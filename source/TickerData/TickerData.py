@@ -3,9 +3,12 @@ import warnings
 
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
+from abc import ABC , abstractmethod
 
 from binance import Client
 from dotenv import load_dotenv, dotenv_values
+
+import yfinance as yf
 
 # Load Environment Variables
 load_dotenv()
@@ -19,17 +22,31 @@ binance_secret = config.get("SECRET_KEY")
 binance_client = Client(binance_key, binance_secret)
 
 
-class Ticker():
+class Ticker(ABC):
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+    RESOLUTIONS = ['1m','3m','5m','15m','30m','1h','2h','4h','1d','1w','1M']
+    MARKETS = ['crypto', 'forex', 'futures']
 
-    def __init__(self) -> None:
-        # self.symbol = symbol
-        # self.market = market
-        # self.resolution = resolution
-        # self.start_date = start_date
-        # self.end_date = end_date
-        # self.dataframe = data.
-        pass
+    def __init__(self, symbol:str, resolution:str, market:str, **period_args) -> None:
+        assert market in self.MARKETS
+
+        # Set the timeframe for the data
+        self.symbol = symbol.upper()
+        self.resolution = self.__set_resolution(resolution)
+        self.market = market.lower()
+        
+        self.period_args = period_args
+        
+        # Default Data Range is 5 days to current time
+        self.start_date, self.end_date = self.__set_data_range(period_args)
+
+        # Store DataFrame
+        self.dataframe = pd.DataFrame()
+
+    @abstractmethod
+    def fetch_data(self, symbols):
+        # Must be over-ridden, to populate the symbol dataframe
+        return None
 
     def parse_data(self):
         pass
@@ -40,55 +57,9 @@ class Ticker():
     def load_data(self):
         pass
 
-# BinanceData Class
-class BinanceData(Ticker):
-    """
-    BinanceData class for downloading historical price data from Binance.
-
-    Parameters:
-    - symbol (str): The trading pair symbol (e.g., 'BTCUSDT').
-    - resolution (str): The resolution for the data (e.g., '1h', '15m').
-    - **kwargs: Additional keyword arguments for setting data range (optional).
-
-    Recognized Parameters in **kwargs:
-    - 'seconds' (int): Number of seconds for data range.
-    - 'minutes' (int): Number of minutes for data range.
-    - 'hours' (int): Number of hours for data range.
-    - 'days' (int): Number of days for data range.
-    - 'weeks' (int): Number of weeks for data range.
-    - 'months' (int): Number of months for data range.
-    - 'years' (int): Number of years for data range.
-
-    Attributes:
-    - resolution (str): The set resolution for the data.
-    - symbol (str): The trading pair symbol in uppercase.
-    - extras (dict): Additional keyword arguments.
-    - start_date (str): The start date for the data range.
-    - end_date (str): The end date for the data range.
-    - data (pd.DataFrame): The downloaded historical price data.
-    - data_name (str): The generated name for the downloaded data.
-
-    Methods:
-    - download(ticker='') -> tuple: Download historical price data for a specific symbol or the default symbol.
-    - download_bulk(symbols: list[str]) -> tuple: Download historical price data for multiple symbols.
-    """
-    
-    def __init__(self, symbol:str, resolution:str, **period_args) -> None:
-        # Set the tiemframe for the data
-        self.symbol = symbol.upper()
-        self.resolution = self.__set_resolution(resolution)
-        
-        self.period_args = period_args
-        
-        # Default Data Range is 5 days to current time
-        self.start_date, self.end_date = self.__set_data_range(period_args)
-
-        self.data = pd.DataFrame()
-        self.data_name = ''
-    
-    def __generate_name(self, symbol: str, resolution: str, start_date: str, end_date: str) -> str:
-        start = datetime.strptime(start_date, super().DATE_FORMAT)
-        end = datetime.strptime(end_date, super().DATE_FORMAT)
+    def _generate_name(self, symbol: str, resolution: str, start_date: str, end_date: str) -> str:
+        start = datetime.strptime(start_date, self.DATE_FORMAT)
+        end = datetime.strptime(end_date, self.DATE_FORMAT)
 
         return f'{symbol}|{resolution}|{start:%d-%b-%y}|{end:%d-%b-%y}'
 
@@ -121,9 +92,17 @@ class BinanceData(Ticker):
         # Set start_date
         start = (end_date - relativedelta(**duration)) if period_updated else start_date
 
-        return start.strftime(super().DATE_FORMAT), end_date.strftime(super().DATE_FORMAT)
+        return start.strftime(self.DATE_FORMAT), end_date.strftime(self.DATE_FORMAT)
     
     def __set_resolution(self, resolution:str):
+        resolutions = BinanceData.RESOLUTIONS
+        
+        if resolution not in resolutions:
+            warnings.warn(f'Unsupported resolution : "{resolution}" is not a recognized resolution. Resolution has been changed to 1-hour.', UserWarning)
+            return resolutions['1d']
+        else:
+            return resolutions[resolution]   
+
         resolutions = {
             '1m': binance_client.KLINE_INTERVAL_1MINUTE,
             '3m': binance_client.KLINE_INTERVAL_3MINUTE,
@@ -148,14 +127,71 @@ class BinanceData(Ticker):
         else:
             return resolutions[resolution]   
 
-    def __download_bulk(self, symbols: list[str]) -> tuple:
+    def has_data(self):
+        return not self.dataframe.empty
+
+
+# BinanceData Class
+class BinanceData(Ticker):
+    
+    """
+    BinanceData class for downloading historical price data from Binance.
+
+    Parameters:
+    - symbol (str): The trading pair symbol (e.g., 'BTCUSDT').
+    - resolution (str): The resolution for the data (e.g., '1h', '15m').
+    - **kwargs: Additional keyword arguments for setting data range (optional).
+
+    Recognized Parameters in **kwargs:
+    - 'seconds' (int): Number of seconds for data range.
+    - 'minutes' (int): Number of minutes for data range.
+    - 'hours' (int): Number of hours for data range.
+    - 'days' (int): Number of days for data range.
+    - 'weeks' (int): Number of weeks for data range.
+    - 'months' (int): Number of months for data range.
+    - 'years' (int): Number of years for data range.
+
+    Attributes:
+    - resolution (str): The set resolution for the data.
+    - symbol (str): The trading pair symbol in uppercase.
+    - extras (dict): Additional keyword arguments.
+    - start_date (str): The start date for the data range.
+    - end_date (str): The end date for the data range.
+    - data (pd.DataFrame): The downloaded historical price data.
+
+    Methods:
+    - download(ticker='') -> tuple: Download historical price data for a specific symbol or the default symbol.
+    - download_bulk(symbols: list[str]) -> tuple: Download historical price data for multiple symbols.
+    """
+    
+    RESOLUTIONS = {
+        '1m': binance_client.KLINE_INTERVAL_1MINUTE,
+        '3m': binance_client.KLINE_INTERVAL_3MINUTE,
+        '5m': binance_client.KLINE_INTERVAL_5MINUTE,
+        '15m': binance_client.KLINE_INTERVAL_15MINUTE,
+        '30m': binance_client.KLINE_INTERVAL_30MINUTE,
+        '1h': binance_client.KLINE_INTERVAL_1HOUR,
+        '2h': binance_client.KLINE_INTERVAL_2HOUR,
+        '4h': binance_client.KLINE_INTERVAL_4HOUR,
+        '1d': binance_client.KLINE_INTERVAL_1DAY,
+        '1w': binance_client.KLINE_INTERVAL_1WEEK,
+        '1M': binance_client.KLINE_INTERVAL_1MONTH,
+    }
+
+    MARKET = 'crypto'
+
+    # def __init__(self, symbol:str, resolution:str, **period_args) -> None:
+    #     super().__init__(symbol, BinanceData.MARKET, resolution=self._res)
+
+    def __init__(self, symbol: str, resolution: str, **period_args) -> None:
+        super().__init__(symbol, resolution, BinanceData.MARKET, **period_args)
+    
+    def __download_bulk(self, symbols: list[str]) -> pd.DataFrame:
         datas = [self.__download(symbol.upper()) for symbol in symbols]
 
-        dataframes, datanames = zip(*datas)
+        dataframes = [data[0] for data in datas]
 
-        datanames = self.__generate_name('|'.join([symbol.upper() for symbol in symbols]), self.resolution, self.start_date, self.end_date)
-
-        return pd.concat(dataframes, axis=0), datanames
+        return pd.concat(dataframes, axis=0)
 
     def __download(self, ticker: str = '') -> tuple:
         if not ticker:
@@ -176,14 +212,11 @@ class BinanceData(Ticker):
         data['symbol'] = symbol
         data.index = pd.to_datetime(data.index) # Changed : removed the additional 1 millisecond
 
-        data_name = self.__generate_name(symbol, self.resolution, self.start_date, self.end_date)
-
         # Set the object values, if only one asset is downloaded
         if not ticker:
-            self.data = data
-            self.data_name = data_name
+            self.dataframe = data
 
-        return data, data_name
+        return data
     
     def fetch_data(self, symbols):
         if isinstance(symbols, str):
@@ -196,11 +229,3 @@ class BinanceData(Ticker):
             # Handle other types or raise an exception
             raise ValueError("Unsupported parameter type for Binance download. Please provide a string or a list.")
 
-if __name__ == '__main__':
-    # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
-    # ethusdt.download()
-    # print(ethusdt.data.index.dtype)
-
-    # Download Bulk Data
-    data, tickers = BinanceData('', '1d', years=5).fetch_data(['BTCUSDT', 'ETHUSDT', 'GMTUSDT'])
-    print(data.columns, '\n\n\n', tickers)
