@@ -229,3 +229,26 @@ class BinanceData(Ticker):
             # Handle other types or raise an exception
             raise ValueError("Unsupported parameter type for Binance download. Please provide a string or a list.")
 
+class YFinanceData(Ticker):
+    DATE_FORMAT = '%Y-%m-%d' # Redefine date format for yfinance
+    def __init__(self) -> None:
+        super().__init__()
+        pass
+
+    def fetch_data(self, symbols):
+        yf.download()
+
+
+
+if __name__ == '__main__':
+    # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
+    # ethusdt.download()
+    # print(ethusdt.data.index.dtype)
+
+    ethusdt = BinanceData('btcusdt', '10', days=20)
+    print(ethusdt.has_data())
+    
+
+    # # Download Bulk Data
+    # data, tickers = BinanceData('', '1d', years=5).fetch_data(['BTCUSDT', 'ETHUSDT', 'GMTUSDT'])
+    # print(data.columns, '\n\n\n', tickers)
