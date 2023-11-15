@@ -6,7 +6,18 @@ from dateutil.relativedelta import relativedelta
 
 from binance import Client
 from dotenv import load_dotenv, dotenv_values
-from abc import ABC, abstractmethod
+
+# Load Environment Variables
+load_dotenv()
+config = dotenv_values('.env')
+
+# Import Environment Variables
+binance_key = config.get("API_KEY")
+binance_secret = config.get("SECRET_KEY")
+
+# Initialize Binance Client
+binance_client = Client(binance_key, binance_secret)
+
 
 class Ticker():
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -14,9 +25,10 @@ class Ticker():
     def __init__(self) -> None:
         # self.symbol = symbol
         # self.market = market
+        # self.resolution = resolution
         # self.start_date = start_date
         # self.end_date = end_date
-        # self.resolution = resolution
+        # self.dataframe = data.
         pass
 
     def parse_data(self):
@@ -28,18 +40,7 @@ class Ticker():
     def load_data(self):
         pass
 
-# Load Environment
-load_dotenv()
-
-# Import Environment Variables
-config = dotenv_values('.env')
-binance_key = config.get("API_KEY")
-binance_secret = config.get("SECRET_KEY")
-
-# Initialize Binance Client
-binance_client = Client(binance_key, binance_secret)
-
-# BinanceData download class
+# BinanceData Class
 class BinanceData(Ticker):
     """
     BinanceData class for downloading historical price data from Binance.
@@ -84,7 +85,6 @@ class BinanceData(Ticker):
 
         self.data = pd.DataFrame()
         self.data_name = ''
-
     
     def __generate_name(self, symbol: str, resolution: str, start_date: str, end_date: str) -> str:
         start = datetime.strptime(start_date, super().DATE_FORMAT)
