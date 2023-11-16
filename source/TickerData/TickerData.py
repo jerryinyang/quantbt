@@ -92,40 +92,16 @@ class Ticker(ABC):
         # Set start_date
         start = (end_date - relativedelta(**duration)) if period_updated else start_date
 
-        return start.strftime(self.DATE_FORMAT), end_date.strftime(self.DATE_FORMAT)
+        return start.strftime(self.DATE_FORMAT), end_date.strftime(self.DATE_FORMAT)  
     
     def __set_resolution(self, resolution:str):
-        resolutions = BinanceData.RESOLUTIONS
+        resolutions = self.__class__.RESOLUTIONS
         
         if resolution not in resolutions:
-            warnings.warn(f'Unsupported resolution : "{resolution}" is not a recognized resolution. Resolution has been changed to 1-hour.', UserWarning)
-            return resolutions['1d']
+            warnings.warn(f'Unsupported resolution : "{resolution}" is not a recognized resolution. Resolution has been changed to 1D.', UserWarning)
+            return '1d'
         else:
-            return resolutions[resolution]   
-
-        resolutions = {
-            '1m': binance_client.KLINE_INTERVAL_1MINUTE,
-            '3m': binance_client.KLINE_INTERVAL_3MINUTE,
-            '5m': binance_client.KLINE_INTERVAL_5MINUTE,
-            '15m': binance_client.KLINE_INTERVAL_15MINUTE,
-            '30m': binance_client.KLINE_INTERVAL_30MINUTE,
-            '1h': binance_client.KLINE_INTERVAL_1HOUR,
-            '2h': binance_client.KLINE_INTERVAL_2HOUR,
-            '4h': binance_client.KLINE_INTERVAL_4HOUR,
-            '6h': binance_client.KLINE_INTERVAL_6HOUR,
-            '8h': binance_client.KLINE_INTERVAL_8HOUR,
-            '12h': binance_client.KLINE_INTERVAL_12HOUR,
-            '1d': binance_client.KLINE_INTERVAL_1DAY,
-            '3d': binance_client.KLINE_INTERVAL_3DAY,
-            '1w': binance_client.KLINE_INTERVAL_1WEEK,
-            '1M': binance_client.KLINE_INTERVAL_1MONTH,
-        }
-        
-        if resolution not in resolutions:
-            warnings.warn(f'Unsupported resolution : "{resolution}" is not a recognized resolution. Resolution has been changed to 1-hour.', UserWarning)
-            return resolutions['1h']
-        else:
-            return resolutions[resolution]   
+            return resolution
 
     def has_data(self):
         return not self.dataframe.empty
@@ -180,11 +156,10 @@ class BinanceData(Ticker):
 
     MARKET = 'crypto'
 
-    # def __init__(self, symbol:str, resolution:str, **period_args) -> None:
-    #     super().__init__(symbol, BinanceData.MARKET, resolution=self._res)
-
     def __init__(self, symbol: str, resolution: str, **period_args) -> None:
         super().__init__(symbol, resolution, BinanceData.MARKET, **period_args)
+        
+        self.resolution = self.__set_resolution(self.resolution)
     
     def __download_bulk(self, symbols: list[str]) -> pd.DataFrame:
         datas = [self.__download(symbol.upper()) for symbol in symbols]
@@ -218,25 +193,47 @@ class BinanceData(Ticker):
 
         return data
     
-    def fetch_data(self, symbols):
-        if isinstance(symbols, str):
+    def __set_resolution(self, resolution:str):
+        resolutions = BinanceData.RESOLUTIONS
+        
+        if resolution not in resolutions:
+            warnings.warn(f'Unsupported resolution : "{resolution}" is not a recognized resolution. Resolution has been changed to 1-hour.', UserWarning)
+            return resolutions['1d']
+        else:
+            return resolutions[resolution]  
+
+    def fetch_data(self):
+        if isinstance(self.symbol, str):
             # If the input is a string, call the download method
-            return self.__download(symbols)
-        elif isinstance(symbols, list):
+            self.dataframe =  self.__download(self.symbol)
+        elif isinstance(self.symbol, list):
             # If the input is a list, call the download_bulk method
-            return self.__download_bulk(symbols)
+            self.dataframe =  self.__download_bulk(self.symbol)
         else:
             # Handle other types or raise an exception
             raise ValueError("Unsupported parameter type for Binance download. Please provide a string or a list.")
+        
+        return self.dataframe
+
 
 class YFinanceData(Ticker):
     DATE_FORMAT = '%Y-%m-%d' # Redefine date format for yfinance
-    def __init__(self) -> None:
-        super().__init__()
-        pass
+    def __init__(self, symbol: str, resolution: str, market: str, **period_args) -> None:
 
-    def fetch_data(self, symbols):
-        yf.download()
+        symbol = f'{symbol}=x' if market == 'forex' else symbol 
+        super().__init__(symbol, resolution, market, **period_args)
+
+    def fetch_data(self):
+        data = yf.download(self.symbol, start=self.start_date, end = self.end_date, interval=self.resolution)
+
+        if data.empty:
+            warnings.warn('\nWARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data. \n'
+                          + 'Ensure the symbol(s) are valid, and the start/end dates are allowed for that resolution.')
+            return
+        
+        self.dataframe = data
+        return self.dataframe
+            
 
 
 
@@ -245,9 +242,12 @@ if __name__ == '__main__':
     # ethusdt.download()
     # print(ethusdt.data.index.dtype)
 
-    ethusdt = BinanceData('btcusdt', '10', days=20)
-    print(ethusdt.has_data())
+    # ethusdt = BinanceData('btcusdt', '10', days=20)
+    # print(ethusdt.has_data())
     
+    aapl = YFinanceData('aapl', '1d', 'futures', days=20)
+    aapl.fetch_data()
+    print(aapl.has_data())
 
     # # Download Bulk Data
     # data, tickers = BinanceData('', '1d', years=5).fetch_data(['BTCUSDT', 'ETHUSDT', 'GMTUSDT'])
