@@ -6,3 +6,4 @@ test*
 *.parquet
 *.DS_Store
 *.json
+__pycache__
