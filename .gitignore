@@ -1,3 +1,8 @@
 .env
 root.tmp
 test*
+*.vuerd.json
+*.csv
+*.parquet
+*.DS_Store
+*.json
