@@ -364,7 +364,7 @@ class BinanceData(TickerData):
 
         # Set the `symbol` column
         data['symbol'] = symbol
-        data.index = pd.to_datetime(data.index)
+        data.index = pd.to_datetime(data.index, unit='ms')
 
         return data
         
