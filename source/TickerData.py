@@ -9,6 +9,8 @@ from binance import Client
 from dotenv import load_dotenv, dotenv_values
 
 from dateutil.parser import parse
+from pathlib import Path
+import json
 
 import yfinance as yf
 
@@ -182,8 +184,6 @@ class TickerData(ABC):
         """
 
         # Default start_date and end_date
-
-        # Default start_date and end_date
         start_date = period_args.get('start_date')
         end_date = period_args.get('end_date')
 
@@ -349,8 +349,8 @@ class BinanceData(TickerData):
 
     def __download(self, symbol:str) -> pd.DataFrame:
         if not symbol: # symbol is None or ''
-            logging.warning(f'Object symbol cannot be None or an empty string.')
-            raise ValueError(f"Object symbol cannot be None or an empty string.")
+            logging.warning('Object symbol cannot be None or an empty string.')
+            raise ValueError("Object symbol cannot be None or an empty string.")
         
         symbol = symbol.upper()
 
@@ -417,7 +417,6 @@ class YFinanceData(TickerData):
                 raise ValueError(error_message)
             
             self.raw_dataframe = self.__reorder_columns(data)
-            print(self.raw_dataframe.columns)
         
         except Exception as e:
             logging.warning(f'Fetch Data Unsuccesful: {e}')
@@ -452,6 +451,105 @@ class YFinanceData(TickerData):
         return stacked
 
 
+
+
+class DataBentoData(TickerData):
+
+    def __init__(self, file_location:str|Path, market : str) -> None:
+        self.market = market
+        self.fetch_data(file_location)
+
+
+    def fetch_data(self, file_location: str | Path):
+        # Read the metadata.json file
+        [file_extension, resolution, symbol, start_date, end_date] = \
+            self.__read_metadata(file_location)
+        
+        # Initialize the TickerData
+        try:
+            super().__init__(symbol, resolution, self.market, start_date=start_date, end_date=end_date)
+        except Exception as e:
+            logging.warning("Failed to initialize the TickerData (parent)")
+            raise e
+        
+        # Read the OHLC data files
+        try:
+            data = self.__read_data_file(file_location, file_extension)
+            data.index = pd.to_datetime(data.index)
+
+            if data.empty:
+                error_message = 'WARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data.' \
+                            + 'Check the filepath provided.'
+                logging.warning(error_message)
+                raise ValueError(error_message)
+            
+            self.raw_dataframe = data
+        
+        except Exception as e:
+            logging.warning(f'Fetch Data Unsuccesful: {e}')
+            raise e
+        
+
+    def __read_metadata(self, file_location: str | Path):
+        # Open the directory from the string or path
+        directory = Path(file_location)
+
+        # Read the metadata.json file in the directory, or raise an Error if it doesn't exist
+        metadata_file = directory / 'metadata.json'
+        if not metadata_file.exists():
+            raise FileNotFoundError(f"Metadata file not found in {directory}")
+
+        # Fetch relevant data in the metadata.json file
+        with open(metadata_file, 'r') as file:
+            metadata = json.load(file)
+
+        query = metadata.get('query', {})
+
+        # Parse/modify the collected data
+        schema = query.get('schema', '')
+        filetype = query.get('encoding', '')
+        resolution = schema.split('-')[-1] if schema else ''
+        symbol = query.get('symbols', [''])[0].split('.')[0] if query.get('symbols') else ''
+        start_date = datetime.utcfromtimestamp(query.get('start', 0) / 1e9)  # convert nanoseconds to seconds
+        end_date = datetime.utcfromtimestamp(query.get('end', 0) / 1e9)  # convert nanoseconds to seconds
+
+        # Remove anything that follows the '.' in the symbol
+        symbol = symbol.split('.')[0]
+
+        file_extension = f'.{schema}.{filetype}'
+
+        return file_extension, resolution, symbol, start_date, end_date
+
+    
+    def __read_data_file(self, file_path: str | Path, file_extension: str):
+        # Convert the input to a Path object if it's a string
+        file_path = Path(file_path) if isinstance(file_path, str) else file_path
+        
+        # Get a list of all files in the directory with the specified file type
+        files = list(file_path.glob(f'*{file_extension}'))
+        
+        # Check if there are any matching files
+        if not files:
+            print(f"No {file_extension} files found in the directory.")
+            return None
+        
+        # Initialize an empty DataFrame to store the data
+        data = pd.DataFrame()
+        
+        # Iterate through each file and read it into the DataFrame
+        for file in files:
+            try:
+                # Assuming CSV files have headers, if not, set header=None
+                data = pd.read_csv(file)
+                data = data.append(data, ignore_index=True)
+            except Exception as e:
+                print(f"Error reading file {file}: {e}")
+
+        return data
+        
+
+    
+
 if __name__ == '__main__':
     # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
     # ethusdt.download()
@@ -468,4 +566,8 @@ if __name__ == '__main__':
     # data, tickers = BinanceData('', '1d', years=5).fetch_data(['BTCUSDT', 'ETHUSDT', 'GMTUSDT'])
     # print(data.columns, '\n\n\n', tickers)
 
-    ethusdt = BinanceData('ETHUSDT', '1h', days=30)
+    # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
+
+    # DataBentoData('/Users/jerryinyang/databento/GLBX-20231115-7N8E9R8WKG')
+    
+    pass

@@ -7,3 +7,4 @@ test*
 *.DS_Store
 *.json
 __pycache__
+/databento
