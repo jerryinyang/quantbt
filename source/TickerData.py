@@ -20,17 +20,13 @@ config = dotenv_values('.env')
 binance_key = config.get("API_KEY")
 binance_secret = config.get("SECRET_KEY")
 
-# Initialize Binance Client
-binance_client = Client(binance_key, binance_secret)
-
-
 class TickerData(ABC):
 
     # CLASS CONSTANT ATTRIBUTES
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-    MARKET_TYPES = ['crypto', 'forex', 'futures']
+    MARKET_TYPES = ['crypto', 'forex', 'futures', 'stocks']
     OHLC_COLUMNS = ['ticker_id', 'resolution', 'market_type', 'open', 'high', 'low', 'close', 'volume']
-    RESOLUTIONS = ['1m','3m','5m','15m','30m','1h','2h','4h','1d','1w','1M']
+    RESOLUTIONS = {key : key for key in ['1m','3m','5m','15m','30m','1h','2h','4h','1d','1w','1M']}
 
     def __init__(self, symbol:str|list[str], resolution:str, market:str, **period_args) -> None:
         assert (isinstance(market, str)) and (market.lower() in self.MARKET_TYPES)  , \
@@ -134,7 +130,7 @@ class TickerData(ABC):
             data.rename(columns={col: 'ticker_id' for col in ['symbol', 'ticker', 'symbols', 'tickers'] if col in data.columns}, inplace=True)
 
             # Set the 'timestamp' column
-            data['timestamp'] = data.index.strftime(self.DATE_FORMAT)
+            data['timestamp'] = data.index.strftime(TickerData.DATE_FORMAT)
 
             # Ensure all the expected columns are present.
             while not all(column in data.columns for column in self.OHLC_COLUMNS):
@@ -220,7 +216,7 @@ class TickerData(ABC):
             elif end_date:
                 start_date = end_date - relativedelta(**duration)
 
-        return start_date.strftime(self.DATE_FORMAT), end_date.strftime(self.DATE_FORMAT)
+        return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
 
 
     def __set_symbol(self, symbol : str|list[str]):
@@ -263,15 +259,15 @@ class TickerData(ABC):
         Raises:
             UserWarning: If the resolution is not recognized, defaults to '1d'.
         """
-        resolutions = self.__class__.RESOLUTIONS
+        resolutions = self.RESOLUTIONS
         default_resolution = '1d'
 
         if resolution not in resolutions:
-            warning_msg = f'Unsupported resolution: "{resolution}" is not recognized. Defaulting to "{default_resolution.capitalize()}".'
+            warning_msg = f'Unsupported resolution: "{resolution}" is not recognized. Defaulting to "{default_resolution}".'
             logging.warning(warning_msg)
             return default_resolution
         else:
-            return resolution
+            return resolutions[resolution]
 
 
     def __has_data(self):
@@ -315,24 +311,33 @@ class BinanceData(TickerData):
     - download_bulk(symbols: list[str]) -> tuple: Download historical price data for multiple symbols.
     """
     
-    RESOLUTIONS = {
-        '1m': binance_client.KLINE_INTERVAL_1MINUTE,
-        '3m': binance_client.KLINE_INTERVAL_3MINUTE,
-        '5m': binance_client.KLINE_INTERVAL_5MINUTE,
-        '15m': binance_client.KLINE_INTERVAL_15MINUTE,
-        '30m': binance_client.KLINE_INTERVAL_30MINUTE,
-        '1h': binance_client.KLINE_INTERVAL_1HOUR,
-        '2h': binance_client.KLINE_INTERVAL_2HOUR,
-        '4h': binance_client.KLINE_INTERVAL_4HOUR,
-        '1d': binance_client.KLINE_INTERVAL_1DAY,
-        '1w': binance_client.KLINE_INTERVAL_1WEEK,
-        '1M': binance_client.KLINE_INTERVAL_1MONTH,
-    }
     MARKET = 'crypto'
 
     def __init__(self, symbol: str|list[str], resolution: str, **period_args) -> None:
         super().__init__(symbol, resolution, BinanceData.MARKET, **period_args)
+        self.client = self.__init_client()
     
+    
+    def __init_client(self):
+        # Initialize Binance Client
+        client = Client(binance_key, binance_secret)
+        
+        self.RESOLUTIONS = {
+            '1m': self.client.KLINE_INTERVAL_1MINUTE,
+            '3m': self.client.KLINE_INTERVAL_3MINUTE,
+            '5m': self.client.KLINE_INTERVAL_5MINUTE,
+            '15m': self.client.KLINE_INTERVAL_15MINUTE,
+            '30m': self.client.KLINE_INTERVAL_30MINUTE,
+            '1h': self.client.KLINE_INTERVAL_1HOUR,
+            '2h': self.client.KLINE_INTERVAL_2HOUR,
+            '4h': self.client.KLINE_INTERVAL_4HOUR,
+            '1d': self.client.KLINE_INTERVAL_1DAY,
+            '1w': self.client.KLINE_INTERVAL_1WEEK,
+            '1M': self.client.KLINE_INTERVAL_1MONTH,
+        }
+
+        return client
+
 
     def __download_bulk(self, symbols: list[str]) -> pd.DataFrame:
         datas = [self.__download(symbol.upper()) for symbol in symbols]
@@ -353,9 +358,7 @@ class BinanceData(TickerData):
             logging.warning("Unspecified Symbol: You have not specified a symbol/asset. Symbol has been set to 'BTCUSDT'.")
             self.symbol = symbol
 
-        resolution = self.__set_resolution(self.resolution)
-
-        klines = binance_client.get_historical_klines(symbol, resolution, self.start_date, self.end_date)
+        klines = self.client.get_historical_klines(symbol, self.resolution, self.start_date, self.end_date)
 
         # Parse kline data into pandas dataframe
         data = pd.DataFrame(
@@ -367,28 +370,6 @@ class BinanceData(TickerData):
         data.index = pd.to_datetime(data.index, unit='ms')
 
         return data
-        
-
-    def __set_resolution(self, resolution: str) -> str:
-        """Set the resolution for Binance data.
-
-        Args:
-            resolution (str): The desired resolution.
-
-        Returns:
-            str: The resolved resolution.
-
-        Raises:
-            UserWarning: If the resolution is not recognized, defaults to '1d'.
-        """
-        resolutions = BinanceData.RESOLUTIONS
-        default_resolution = '1d'
-
-        if resolution not in resolutions:
-            logging.warning(f'Unsupported resolution: "{resolution}" is not recognized. Defaulting to "{default_resolution}".')
-            return resolutions[default_resolution]
-        else:
-            return resolutions[resolution]
 
 
     def fetch_data(self):
@@ -407,21 +388,68 @@ class BinanceData(TickerData):
 
 
 class YFinanceData(TickerData):
+    RESOLUTIONS = {
+        '1m' : '1m',
+        '5m' : '5m',
+        '15m' : '15m',
+        '30m' : '30m',
+        '1h' : '1h',
+        '1d' : '1d',
+        '1w' : '1wk',
+        '1M' : '1mo'
+        }
+
     def __init__(self, symbol: str, resolution: str, market: str, **period_args) -> None:
 
-        symbol = f'{symbol}=x' if market == 'forex' else symbol 
+        symbol = f'{symbol}=x' if market == 'forex' else f'{symbol}=f' if market == 'futures' else symbol
         super().__init__(symbol, resolution, market, **period_args)
 
-    def fetch_data(self):
-        data = yf.download(self.symbol, start=self.start_date, end = self.end_date, interval=self.resolution)
 
-        if data.empty:
-            logging.warning('\nWARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data. \n'
-                          + 'Ensure the symbol(s) are valid, and the start/end dates are allowed for that resolution.')
-            return
+    def fetch_data(self):
+        try:
+            data = yf.download(self.symbol, start=self.start_date, end = self.end_date, interval=self.resolution)
+            data.index = pd.to_datetime(data.index)
+
+            if data.empty:
+                error_message = 'WARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data.' \
+                            + ' Ensure the symbol(s) are valid, and the start/end dates are allowed for that resolution.'
+                logging.warning(error_message)
+                raise ValueError(error_message)
+            
+            self.raw_dataframe = self.__reorder_columns(data)
+            print(self.raw_dataframe.columns)
         
-        self.dataframe = data
-        return self.dataframe
+        except Exception as e:
+            logging.warning(f'Fetch Data Unsuccesful: {e}')
+            raise e
+    
+    
+    def __reorder_columns(self, data : pd.MultiIndex):
+        """
+        Reorders a MultiIndex DataFrame by stacking one level and resetting the other.
+
+        Parameters:
+        - data (pd.DataFrame): Input DataFrame with a MultiIndex.
+
+        Returns:
+        pd.DataFrame: Reordered DataFrame with a 'symbol' column.
+
+        Raises:
+        ValueError: If the input DataFrame does not have a MultiIndex.
+        """
+
+        # Check if the input DataFrame has a MultiIndex
+        if not isinstance(data.index, pd.MultiIndex):
+            data['symbol'] = self.symbol
+            return data
+
+        # Stack one level of the DataFrame and rename the resulting axis
+        stacked = data.stack(level=1).rename_axis(index=[data.index.name, 'symbol'])
+
+        # Reset the 'symbol' level to become a regular column
+        stacked.reset_index(level='symbol', inplace=True)
+        
+        return stacked
 
 
 if __name__ == '__main__':
