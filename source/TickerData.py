@@ -3,7 +3,7 @@ import logging
 
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from abc import ABC , abstractmethod
+from abc import ABC, abstractmethod
 
 from binance import Client
 from dotenv import load_dotenv, dotenv_values
@@ -16,29 +16,44 @@ import yfinance as yf
 
 # Load Environment Variables
 load_dotenv()
-config = dotenv_values('.env')
+config = dotenv_values(".env")
 
 # Import Environment Variables
 binance_key = config.get("API_KEY")
 binance_secret = config.get("SECRET_KEY")
 
-class TickerData(ABC):
 
+class TickerData(ABC):
     # CLASS CONSTANT ATTRIBUTES
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-    MARKET_TYPES = ['crypto', 'forex', 'futures', 'stocks']
-    OHLC_COLUMNS = ['ticker_id', 'resolution', 'market_type', 'open', 'high', 'low', 'close', 'volume']
-    RESOLUTIONS = {key : key for key in ['1m','3m','5m','15m','30m','1h','2h','4h','1d','1w','1M']}
+    MARKET_TYPES = ["crypto", "forex", "futures", "stocks"]
+    OHLC_COLUMNS = [
+        "ticker_id",
+        "resolution",
+        "market_type",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+    ]
+    RESOLUTIONS = {
+        key: key
+        for key in ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"]
+    }
 
-    def __init__(self, symbol:str|list[str], resolution:str, market:str, **period_args) -> None:
-        assert (isinstance(market, str)) and (market.lower() in self.MARKET_TYPES)  , \
-            f'Unrecognized market : {market}'
+    def __init__(
+        self, symbol: str | list[str], resolution: str, market: str, **period_args
+    ) -> None:
+        assert (isinstance(market, str)) and (
+            market.lower() in self.MARKET_TYPES
+        ), f"Unrecognized market : {market}"
 
         # Set the timeframe for the data
         self.symbol = self.__set_symbol(symbol)
         self.resolution = self.__set_resolution(resolution)
         self.market_type = market.lower()
-        
+
         self.start_date, self.end_date = self.__set_data_range(period_args)
 
         # OHLC DataFrames
@@ -48,28 +63,24 @@ class TickerData(ABC):
         # Load the Data
         self.load_data()
 
-
-    @property # Read Only Getter for self.dataframe
+    @property  # Read Only Getter for self.dataframe
     def dataframe(self):
         return self.__dataframe
-    
 
-    @dataframe.setter # Setter for self.dataframe
-    def dataframe(self, data:pd.DataFrame) -> None:
+    @dataframe.setter  # Setter for self.dataframe
+    def dataframe(self, data: pd.DataFrame) -> None:
         if not self.data_loaded():
             self.__dataframe = self.parse_data(data)
-
 
     @abstractmethod
     def fetch_data(self):
         # Must be over-ridden, to populate the symbol dataframe
         return None
-    
-    
+
     def load_data(self):
-        '''
+        """
         This runs the process of fetching, parsing data, and storing it to self.data_frame.
-        '''
+        """
         try:
             # Download (fetch) the data, and assign it to self.raw_data
             self.fetch_data()
@@ -82,11 +93,10 @@ class TickerData(ABC):
                 self.raw_dataframe = pd.DataFrame()
 
             return loaded
-        
-        except Exception as e:
-            logging.error(f'Error Loading Data: {e}')
-            raise e
 
+        except Exception as e:
+            logging.error(f"Error Loading Data: {e}")
+            raise e
 
     def parse_data(self, data: pd.DataFrame = None):
         """
@@ -115,36 +125,45 @@ class TickerData(ABC):
                     if self.__has_data():
                         break
                     else:
-                        logging.warning('Dataframe is empty. Fetching data now...')
+                        logging.warning("Dataframe is empty. Fetching data now...")
                         self.fetch_data()
 
                 if not self.__has_data():
-                    logging.error('Unable to fetch data.')
-                    raise ValueError('Unable to fetch data.')
+                    logging.error("Unable to fetch data.")
+                    raise ValueError("Unable to fetch data.")
 
                 # Assign raw DataFrame to the local variable
                 data = self.raw_dataframe.copy()
 
             # Rename all columns to lowercase
-            data.rename(columns={col: col.lower() for col in data.columns}, inplace=True)
+            data.rename(
+                columns={col: col.lower() for col in data.columns}, inplace=True
+            )
 
             # Rename possible 'ticker_id' column
-            data.rename(columns={col: 'ticker_id' for col in ['symbol', 'ticker', 'symbols', 'tickers'] if col in data.columns}, inplace=True)
+            data.rename(
+                columns={
+                    col: "ticker_id"
+                    for col in ["symbol", "ticker", "symbols", "tickers"]
+                    if col in data.columns
+                },
+                inplace=True,
+            )
 
             # Set the 'timestamp' column
-            data['timestamp'] = data.index.strftime(TickerData.DATE_FORMAT)
+            data["timestamp"] = data.index.strftime(TickerData.DATE_FORMAT)
 
             # Ensure all the expected columns are present.
             while not all(column in data.columns for column in self.OHLC_COLUMNS):
                 missing_columns = set(self.OHLC_COLUMNS) - set(data.columns)
 
                 # If 'market_type' is missing, assign the specified value and check again.
-                if 'market_type' in missing_columns:
-                    data['market_type'] = self.market_type
+                if "market_type" in missing_columns:
+                    data["market_type"] = self.market_type
 
                 # If 'resolution' is missing, assign the specified value and check again.
-                if 'resolution' in missing_columns:
-                    data['resolution'] = self.resolution
+                if "resolution" in missing_columns:
+                    data["resolution"] = self.resolution
 
                 else:
                     # If other columns are missing, raise a ValueError.
@@ -152,10 +171,17 @@ class TickerData(ABC):
                     logging.error(error_message)
                     raise ValueError(error_message)
 
-
             # Assign expected data types to the columns
-            desired_dtypes = {'ticker_id': 'object', 'resolution': 'object', 'market_type': 'object',
-                            'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'int'}
+            desired_dtypes = {
+                "ticker_id": "object",
+                "resolution": "object",
+                "market_type": "object",
+                "open": "float",
+                "high": "float",
+                "low": "float",
+                "close": "float",
+                "volume": "int",
+            }
             data = data.astype(desired_dtypes)
 
             # Drop rows with any empty cells
@@ -166,11 +192,9 @@ class TickerData(ABC):
         except Exception as e:
             logging.error(f"Error parsing data: {e}")
             raise e
-    
 
     def save_data(self):
         pass
-
 
     def __set_data_range(self, period_args: dict = {}) -> tuple:
         """
@@ -184,34 +208,37 @@ class TickerData(ABC):
         """
 
         # Default start_date and end_date
-        start_date = period_args.get('start_date')
-        end_date = period_args.get('end_date')
+        start_date = period_args.get("start_date")
+        end_date = period_args.get("end_date")
 
         # Check if start_date and end_date are valid datetime objects, otherwise use default values.
         if not isinstance(start_date, datetime):
-            start_date = parse(start_date) if start_date else datetime.now() - timedelta(days=30)
-        
+            start_date = (
+                parse(start_date) if start_date else datetime.now() - timedelta(days=30)
+            )
+
         if not isinstance(end_date, datetime):
             end_date = parse(end_date) if end_date else datetime.now()
 
         # Define the empty period
         duration = {
-            'seconds': 0,
-            'minutes': 0,
-            'hours': 0,
-            'days': period_args.get('days', 30),
-            'weeks': 0,
-            'months': 0,
-            'years': 0,
+            "seconds": 0,
+            "minutes": 0,
+            "hours": 0,
+            "days": period_args.get("days", 30),
+            "weeks": 0,
+            "months": 0,
+            "years": 0,
         }
 
         # Update the duration with only elements that are found in both dictionaries
-        duration = {key : period_args[key] for key in duration.keys() & period_args.keys()}
+        duration = {
+            key: period_args[key] for key in duration.keys() & period_args.keys()
+        }
 
         # Checks if the default duration has been updated by the passed period arguments
         period_updated = any(value > 0 for value in duration.values())
-    
-        
+
         # If start_date and end_date were passed and parsed successfully.
         if period_updated:
             if start_date:
@@ -219,10 +246,9 @@ class TickerData(ABC):
             elif end_date:
                 start_date = end_date - relativedelta(**duration)
 
-        return start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')
+        return start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")
 
-
-    def __set_symbol(self, symbol : str|list[str]):
+    def __set_symbol(self, symbol: str | list[str]):
         """Set the symbol for your class.
 
         Args:
@@ -237,7 +263,7 @@ class TickerData(ABC):
         """
 
         if symbol is None:
-            error_message = 'Passed symbol cannot be None'
+            error_message = "Passed symbol cannot be None"
             logging.warning(error_message)
             raise ValueError(error_message)
         if isinstance(symbol, str):
@@ -249,7 +275,6 @@ class TickerData(ABC):
             logging.warning(error_message)
             raise TypeError(error_message)
 
-        
     def __set_resolution(self, resolution: str) -> str:
         """Set the resolution for Binance data.
 
@@ -263,7 +288,7 @@ class TickerData(ABC):
             UserWarning: If the resolution is not recognized, defaults to '1d'.
         """
         resolutions = self.RESOLUTIONS
-        default_resolution = '1d'
+        default_resolution = "1d"
 
         if resolution not in resolutions:
             warning_msg = f'Unsupported resolution: "{resolution}" is not recognized. Defaulting to "{default_resolution}".'
@@ -272,18 +297,15 @@ class TickerData(ABC):
         else:
             return resolutions[resolution]
 
-
     def __has_data(self):
         return not self.raw_dataframe.empty
-    
 
     def data_loaded(self):
         return not self.dataframe.empty
 
 
-
 class BinanceData(TickerData):
-    
+
     """
     BinanceData class for downloading historical price data from Binance.
 
@@ -313,34 +335,32 @@ class BinanceData(TickerData):
     - download(ticker='') -> tuple: Download historical price data for a specific symbol or the default symbol.
     - download_bulk(symbols: list[str]) -> tuple: Download historical price data for multiple symbols.
     """
-    
-    MARKET = 'crypto'
 
-    def __init__(self, symbol: str|list[str], resolution: str, **period_args) -> None:
+    MARKET = "crypto"
+
+    def __init__(self, symbol: str | list[str], resolution: str, **period_args) -> None:
         super().__init__(symbol, resolution, BinanceData.MARKET, **period_args)
         self.client = self.__init_client()
-    
-    
+
     def __init_client(self):
         # Initialize Binance Client
         client = Client(binance_key, binance_secret)
-        
+
         self.RESOLUTIONS = {
-            '1m': self.client.KLINE_INTERVAL_1MINUTE,
-            '3m': self.client.KLINE_INTERVAL_3MINUTE,
-            '5m': self.client.KLINE_INTERVAL_5MINUTE,
-            '15m': self.client.KLINE_INTERVAL_15MINUTE,
-            '30m': self.client.KLINE_INTERVAL_30MINUTE,
-            '1h': self.client.KLINE_INTERVAL_1HOUR,
-            '2h': self.client.KLINE_INTERVAL_2HOUR,
-            '4h': self.client.KLINE_INTERVAL_4HOUR,
-            '1d': self.client.KLINE_INTERVAL_1DAY,
-            '1w': self.client.KLINE_INTERVAL_1WEEK,
-            '1M': self.client.KLINE_INTERVAL_1MONTH,
+            "1m": self.client.KLINE_INTERVAL_1MINUTE,
+            "3m": self.client.KLINE_INTERVAL_3MINUTE,
+            "5m": self.client.KLINE_INTERVAL_5MINUTE,
+            "15m": self.client.KLINE_INTERVAL_15MINUTE,
+            "30m": self.client.KLINE_INTERVAL_30MINUTE,
+            "1h": self.client.KLINE_INTERVAL_1HOUR,
+            "2h": self.client.KLINE_INTERVAL_2HOUR,
+            "4h": self.client.KLINE_INTERVAL_4HOUR,
+            "1d": self.client.KLINE_INTERVAL_1DAY,
+            "1w": self.client.KLINE_INTERVAL_1WEEK,
+            "1M": self.client.KLINE_INTERVAL_1MONTH,
         }
 
         return client
-
 
     def __download_bulk(self, symbols: list[str]) -> pd.DataFrame:
         datas = [self.__download(symbol.upper()) for symbol in symbols]
@@ -349,31 +369,60 @@ class BinanceData(TickerData):
 
         return pd.concat(dataframes, axis=0)
 
-
-    def __download(self, symbol:str) -> pd.DataFrame:
-        if not symbol: # symbol is None or ''
-            logging.warning('Object symbol cannot be None or an empty string.')
+    def __download(self, symbol: str) -> pd.DataFrame:
+        if not symbol:  # symbol is None or ''
+            logging.warning("Object symbol cannot be None or an empty string.")
             raise ValueError("Object symbol cannot be None or an empty string.")
-        
+
         symbol = symbol.upper()
 
-        if not self.symbol: # if object.symbol isn't also initialised
-            logging.warning("Unspecified Symbol: You have not specified a symbol/asset. Symbol has been set to 'BTCUSDT'.")
+        if not self.symbol:  # if object.symbol isn't also initialised
+            logging.warning(
+                "Unspecified Symbol: You have not specified a symbol/asset. Symbol has been set to 'BTCUSDT'."
+            )
             self.symbol = symbol
 
-        klines = self.client.get_historical_klines(symbol, self.resolution, self.start_date, self.end_date)
+        klines = self.client.get_historical_klines(
+            symbol, self.resolution, self.start_date, self.end_date
+        )
 
         # Parse kline data into pandas dataframe
-        data = pd.DataFrame(
-            klines, columns=['time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'number_of_trades', '_', '_', '_', '_'], 
-        ).set_index('time').astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'}).drop(['_'], axis=1)
+        data = (
+            pd.DataFrame(
+                klines,
+                columns=[
+                    "time",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "close_time",
+                    "number_of_trades",
+                    "_",
+                    "_",
+                    "_",
+                    "_",
+                ],
+            )
+            .set_index("time")
+            .astype(
+                {
+                    "open": "float",
+                    "high": "float",
+                    "low": "float",
+                    "close": "float",
+                    "volume": "float",
+                }
+            )
+            .drop(["_"], axis=1)
+        )
 
         # Set the `symbol` column
-        data['symbol'] = symbol
-        data.index = pd.to_datetime(data.index, unit='ms')
+        data["symbol"] = symbol
+        data.index = pd.to_datetime(data.index, unit="ms")
 
         return data
-
 
     def fetch_data(self):
         if isinstance(self.symbol, str):
@@ -389,44 +438,55 @@ class BinanceData(TickerData):
             raise ValueError(error_message)
 
 
-
 class YFinanceData(TickerData):
     RESOLUTIONS = {
-        '1m' : '1m',
-        '5m' : '5m',
-        '15m' : '15m',
-        '30m' : '30m',
-        '1h' : '1h',
-        '1d' : '1d',
-        '1w' : '1wk',
-        '1M' : '1mo'
-        }
+        "1m": "1m",
+        "5m": "5m",
+        "15m": "15m",
+        "30m": "30m",
+        "1h": "1h",
+        "1d": "1d",
+        "1w": "1wk",
+        "1M": "1mo",
+    }
 
-    def __init__(self, symbol: str, resolution: str, market: str, **period_args) -> None:
-
-        symbol = f'{symbol}=x' if market == 'forex' else f'{symbol}=f' if market == 'futures' else symbol
+    def __init__(
+        self, symbol: str, resolution: str, market: str, **period_args
+    ) -> None:
+        symbol = (
+            f"{symbol}=x"
+            if market == "forex"
+            else f"{symbol}=f"
+            if market == "futures"
+            else symbol
+        )
         super().__init__(symbol, resolution, market, **period_args)
-
 
     def fetch_data(self):
         try:
-            data = yf.download(self.symbol, start=self.start_date, end = self.end_date, interval=self.resolution)
+            data = yf.download(
+                self.symbol,
+                start=self.start_date,
+                end=self.end_date,
+                interval=self.resolution,
+            )
             data.index = pd.to_datetime(data.index)
 
             if data.empty:
-                error_message = 'WARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data.' \
-                            + ' Ensure the symbol(s) are valid, and the start/end dates are allowed for that resolution.'
+                error_message = (
+                    "WARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data."
+                    + " Ensure the symbol(s) are valid, and the start/end dates are allowed for that resolution."
+                )
                 logging.warning(error_message)
                 raise ValueError(error_message)
-            
+
             self.raw_dataframe = self.__reorder_columns(data)
-        
+
         except Exception as e:
-            logging.warning(f'Fetch Data Unsuccesful: {e}')
+            logging.warning(f"Fetch Data Unsuccesful: {e}")
             raise e
-    
-    
-    def __reorder_columns(self, data : pd.MultiIndex):
+
+    def __reorder_columns(self, data: pd.MultiIndex):
         """
         Reorders a MultiIndex DataFrame by stacking one level and resetting the other.
 
@@ -442,103 +502,116 @@ class YFinanceData(TickerData):
 
         # Check if the input DataFrame has a MultiIndex
         if not isinstance(data.index, pd.MultiIndex):
-            data['symbol'] = self.symbol
+            data["symbol"] = self.symbol
             return data
 
         # Stack one level of the DataFrame and rename the resulting axis
-        stacked = data.stack(level=1).rename_axis(index=[data.index.name, 'symbol'])
+        stacked = data.stack(level=1).rename_axis(index=[data.index.name, "symbol"])
 
         # Reset the 'symbol' level to become a regular column
-        stacked.reset_index(level='symbol', inplace=True)
-        
+        stacked.reset_index(level="symbol", inplace=True)
+
         return stacked
 
 
-
-
 class DataBentoData(TickerData):
-
-    def __init__(self, file_location:str|Path, market : str) -> None:
+    def __init__(self, file_location: str | Path, market: str) -> None:
         self.market = market
 
         self.file_location = file_location
         # Read the metadata.json file
-        [self.file_extension, resolution, symbol, start_date, end_date] = \
-            self.__read_metadata(file_location)
-        
+        [
+            self.file_extension,
+            resolution,
+            symbol,
+            start_date,
+            end_date,
+        ] = self.__read_metadata(file_location)
+
         # Initialize the TickerData
         try:
-            super().__init__(symbol, resolution, self.market, start_date=start_date, end_date=end_date)
+            super().__init__(
+                symbol,
+                resolution,
+                self.market,
+                start_date=start_date,
+                end_date=end_date,
+            )
         except Exception as e:
             logging.warning("Failed to initialize the TickerData (parent)")
             raise e
 
-
-    def fetch_data(self):    
+    def fetch_data(self):
         # Read the OHLC data files
         try:
             data = self.__read_data_files(self.file_location, self.file_extension)
             data.index = pd.to_datetime(data.index)
 
             if data.empty:
-                error_message = 'WARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data.' \
-                            + 'Check the filepath provided.'
+                error_message = (
+                    "WARNING: Fetch Data Unsuccesful. Object Dataframe did not recieve any data."
+                    + "Check the filepath provided."
+                )
                 logging.warning(error_message)
                 raise ValueError(error_message)
-            
+
             self.raw_dataframe = data
-        
+
         except Exception as e:
-            logging.warning(f'Fetch Data Unsuccesful: {e}')
+            logging.warning(f"Fetch Data Unsuccesful: {e}")
             raise e
-        
 
     def __read_metadata(self, file_location: str | Path):
         # Open the directory from the string or path
         directory = Path(file_location)
 
         # Read the metadata.json file in the directory, or raise an Error if it doesn't exist
-        metadata_file = directory / 'metadata.json'
+        metadata_file = directory / "metadata.json"
         if not metadata_file.exists():
             raise FileNotFoundError(f"Metadata file not found in {directory}")
 
         # Fetch relevant data in the metadata.json file
-        with open(metadata_file, 'r') as file:
+        with open(metadata_file, "r") as file:
             metadata = json.load(file)
 
-        query = metadata.get('query', {})
+        query = metadata.get("query", {})
 
         # Parse/modify the collected data
-        schema = query.get('schema', '')
-        filetype = query.get('encoding', '')
-        resolution = schema.split('-')[-1] if schema else ''
-        symbol = query.get('symbols', [''])[0].split('.')[0] if query.get('symbols') else ''
-        start_date = datetime.utcfromtimestamp(query.get('start', 0) / 1e9)  # convert nanoseconds to seconds
-        end_date = datetime.utcfromtimestamp(query.get('end', 0) / 1e9)  # convert nanoseconds to seconds
+        schema = query.get("schema", "")
+        filetype = query.get("encoding", "")
+        resolution = schema.split("-")[-1] if schema else ""
+        symbol = (
+            query.get("symbols", [""])[0].split(".")[0] if query.get("symbols") else ""
+        )
+        start_date = datetime.utcfromtimestamp(
+            query.get("start", 0) / 1e9
+        )  # convert nanoseconds to seconds
+        end_date = datetime.utcfromtimestamp(
+            query.get("end", 0) / 1e9
+        )  # convert nanoseconds to seconds
 
         # Remove anything that follows the '.' in the symbol
-        symbol = symbol.split('.')[0]
+        symbol = symbol.split(".")[0]
 
-        file_extension = f'.{schema}.{filetype}'
+        file_extension = f".{schema}.{filetype}"
 
         return file_extension, resolution, symbol, start_date, end_date
 
-    
     def __read_data_files(self, file_path: str | Path, file_extension: str):
         # Convert the input to a Path object if it's a string
         file_path = Path(file_path) if isinstance(file_path, str) else file_path
-        
+
         # Get a list of all files in the directory with the specified file type
-        files = list(file_path.glob(f'*{file_extension}'))
-        
+        files = list(file_path.glob(f"*{file_extension}"))
+
         # Check if there are any matching files
         if not files:
             print(f"No {file_extension} files found in the directory.")
             return None
-        
+
         # Initialize an empty list to store DataFrames
         dataframes = []
-        
+
         # Iterate through each file and read it into a DataFrame
         for file in files:
             try:
@@ -551,18 +624,16 @@ class DataBentoData(TickerData):
         data = pd.concat(dataframes, ignore_index=True)
 
         return data
-        
 
-    
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
     # ethusdt.download()
     # print(ethusdt.data.index.dtype)
 
     # ethusdt = BinanceData('btcusdt', '10', days=20)
     # print(ethusdt.has_data())
-    
+
     # aapl = YFinanceData('aapl', '1d', 'futures', days=20)
     # aapl.fetch_data()
     # print(aapl.has_data())
@@ -574,5 +645,5 @@ if __name__ == '__main__':
     # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
 
     # DataBentoData('/Users/jerryinyang/databento/GLBX-20231115-7N8E9R8WKG')
-    
+
     pass
