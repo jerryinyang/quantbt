@@ -188,8 +188,11 @@ class TickerData(ABC):
         end_date = period_args.get('end_date')
 
         # Check if start_date and end_date are valid datetime objects, otherwise use default values.
-        start_date = parse(start_date) if start_date else datetime.now() - timedelta(days=30)
-        end_date = parse(end_date) if end_date else datetime.now()
+        if not isinstance(start_date, datetime):
+            start_date = parse(start_date) if start_date else datetime.now() - timedelta(days=30)
+        
+        if not isinstance(end_date, datetime):
+            end_date = parse(end_date) if end_date else datetime.now()
 
         # Define the empty period
         duration = {
@@ -457,12 +460,10 @@ class DataBentoData(TickerData):
 
     def __init__(self, file_location:str|Path, market : str) -> None:
         self.market = market
-        self.fetch_data(file_location)
 
-
-    def fetch_data(self, file_location: str | Path):
+        self.file_location = file_location
         # Read the metadata.json file
-        [file_extension, resolution, symbol, start_date, end_date] = \
+        [self.file_extension, resolution, symbol, start_date, end_date] = \
             self.__read_metadata(file_location)
         
         # Initialize the TickerData
@@ -471,10 +472,12 @@ class DataBentoData(TickerData):
         except Exception as e:
             logging.warning("Failed to initialize the TickerData (parent)")
             raise e
-        
+
+
+    def fetch_data(self):    
         # Read the OHLC data files
         try:
-            data = self.__read_data_file(file_location, file_extension)
+            data = self.__read_data_files(self.file_location, self.file_extension)
             data.index = pd.to_datetime(data.index)
 
             if data.empty:
@@ -521,7 +524,7 @@ class DataBentoData(TickerData):
         return file_extension, resolution, symbol, start_date, end_date
 
     
-    def __read_data_file(self, file_path: str | Path, file_extension: str):
+    def __read_data_files(self, file_path: str | Path, file_extension: str):
         # Convert the input to a Path object if it's a string
         file_path = Path(file_path) if isinstance(file_path, str) else file_path
         
@@ -533,17 +536,19 @@ class DataBentoData(TickerData):
             print(f"No {file_extension} files found in the directory.")
             return None
         
-        # Initialize an empty DataFrame to store the data
-        data = pd.DataFrame()
+        # Initialize an empty list to store DataFrames
+        dataframes = []
         
-        # Iterate through each file and read it into the DataFrame
+        # Iterate through each file and read it into a DataFrame
         for file in files:
             try:
                 # Assuming CSV files have headers, if not, set header=None
-                data = pd.read_csv(file)
-                data = data.append(data, ignore_index=True)
+                dataframes.append(pd.read_csv(file))
             except Exception as e:
                 print(f"Error reading file {file}: {e}")
+
+        # Concatenate all DataFrames into a single DataFrame
+        data = pd.concat(dataframes, ignore_index=True)
 
         return data
         
