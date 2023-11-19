@@ -41,6 +41,7 @@ class TickerData(ABC):
         key: key
         for key in ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M"]
     }
+    _DATABASE = pd.DataFrame(columns=OHLC_COLUMNS)
 
     def __init__(
         self, symbol: str | list[str], resolution: str, market: str, **period_args
@@ -192,9 +193,17 @@ class TickerData(ABC):
         except Exception as e:
             logging.error(f"Error parsing data: {e}")
             raise e
+        
+    def store_data(self):
+        assert self.data_loaded(), ValueError('Object does not have data to be stored')
+        
+        try:
+            self.DATABASE = pd.concat([self.DATABASE, self.dataframe], ignore_index=True)
+            self.DATABASE = self.DATABASE.drop_duplicates()
 
-    def save_data(self):
-        pass
+        except Exception as e:
+            logging.error(f'Error moving data into the main database: {e}')
+            raise e
 
     def __set_data_range(self, period_args: dict = {}) -> tuple:
         """
@@ -302,6 +311,17 @@ class TickerData(ABC):
 
     def data_loaded(self):
         return not self.dataframe.empty
+
+    @property
+    def DATABASE(cls):
+        # Getter for DATABASE
+        return cls._DATABASE
+    
+    @classmethod
+    @DATABASE.setter
+    def DATABASE(cls, data : pd.DataFrame):
+        # Setter for DATAFRAME
+        cls._DATABASE = data
 
 
 class BinanceData(TickerData):
@@ -624,6 +644,7 @@ class DataBentoData(TickerData):
         data = pd.concat(dataframes, ignore_index=True)
 
         return data
+
 
 
 if __name__ == "__main__":
