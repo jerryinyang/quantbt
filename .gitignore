@@ -1,6 +1,6 @@
 .env
 root.tmp
-test*
+test.*
 *.vuerd.json
 *.csv
 *.parquet

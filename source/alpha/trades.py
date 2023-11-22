@@ -1,33 +1,47 @@
+from enum import Enum
+from orders import Order
+from utils import Bar
+
 class Trade(object):
 
-    def __init__(self, id, symbol, direction, timestamp, size, entry_price, exit_price:float=None, parent_id:str=None, bracket_name:str=None, bracket_role:str=None) -> None:
+    def __init__(self, id, order:Order, timestamp, exit_price:float=None) -> None:
+    
         self.id = id
-        self.symbol = symbol
-        self.direction = direction
+        self.order_id = order.order_id
+        self.ticker = order.ticker
+        self.direction = order.direction
         self.timestamp = timestamp
-        self.size = size
+        self.size = order.size
         
-        self.entry_price = entry_price
+        self.entry_price = order.price
         self.exit_price = exit_price
         
-        self.parent_id = None
-        self.bracket = self.BracketOrder(bracket_name, bracket_role) if (bracket_name and bracket_role) else None
+        self.parent_id = order.parent_id
+        self.bracket_orders = order.bracket_orders # TODO : Use these to create order objects
 
-        # params = (('pnl', None)
-        # ('pnl_perc', None)
+        self.status = Trade.Status.Active
 
-        # ('commission', None)
+        self.params = self.Params()
 
-        # ('entry_bar_index', None)
-        # ('exit_bar_index', None)
 
-        # ('entry_order_id', None)
-        # ('exit_order_id', None)
+    class Status(Enum):
+        Active = 'Active'     # Order object created
+        Closed = 'Closed'   # Order has been added to engine's lists of orders
+        
+    class Params:
+        def __init__(self, entry_bar:Bar, entry_order:Order) -> None:
+            self.pnl = None
+            self.pnl_perc = None
+            self.commission = None
+            self.entry_bar_index = entry_bar.index
+            self.entry_order_id = entry_order.id
+            self.exit_bar_index = None
+            self.exit_order_id = None
+            self.exit_time = None
+            self.max_runup = None # Highest PnL Value During Trade
+            self.max_runup_perc = None # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
+            self.max_drawdown = None # Lowest PnL Value During Trade
+            self.max_drawdown_perc = None # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
 
-        # ('exit_time', None)
-        # ('max_runup', None) # Highest PnL Value During Trade
-        # ('max_runup_perc', None) # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
-        # ('max_drawdown', None) # Lowest PnL Value During Trade
-        # ('max_drawdown_perc', None) # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
-        # )
-
+    def update(self, bar):
+        pass
