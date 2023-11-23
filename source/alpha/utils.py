@@ -1,7 +1,17 @@
 from datetime import datetime
+import logging
 
 class Bar:
-    def __init__(self, open: float, high: float, low: float, close: float, volume: int, index: int, timestamp: int | datetime, resolution: str, ticker: str) -> None:
+    def __init__(self, 
+                 open: float, 
+                 high: float, 
+                 low: float, 
+                 close: float, 
+                 volume: int, 
+                 index: int, 
+                 timestamp: int | datetime, 
+                 resolution: str, 
+                 ticker: str) -> None:
         """
         Represents a OHLCV bar with open, high, low, close prices, volume, index, timestamp, and resolution.
 
@@ -40,6 +50,13 @@ class Bar:
         self.resolution = resolution
         self.ticker = ticker
 
+    
+    def __repr__(self) -> str:
+        return f"Bar(open={self.open}, high={self.high}, low={self.low}, \
+                close={self.close}, volume={self.volume}, index={self.index}, \
+                    timestamp={self.timestamp}, resolution='{self.resolution}', \
+                        ticker='{self.ticker}')"
+
 
     def fills_price(self, price:float):
         """
@@ -52,3 +69,38 @@ class Bar:
             - bool: True if the price is within the bar, False otherwise.
         """
         return self.high >= price >= self.low
+
+
+class Log:
+    filename='debug.log'
+    
+    def __init__(self) -> None:
+        self.log_debug = logging.getLogger('debug') # For Debug, Info
+        self.log_error = logging.getLogger('warning') # For Warning, Error, Critical
+
+        self.log_debug.setLevel(logging.DEBUG)
+        self.log_error.setLevel(logging.WARNING)
+
+        self.format_info = logging.Formatter(' [%(asctime)s] %(levelname)s --> %(message)s')
+        self.format_error = logging.Formatter(' ***** %(levelname)s ***** \n[ %(pathname)s:%(lineno)d:%(funcName)s ]\nMESSAGE:\n%(message)s')
+
+        self.file_debug = logging.FileHandler('logs.log').setFormatter(self.format_info)
+        self.file_error = logging.FileHandler('logs.log').setFormatter(self.format_error)
+
+        self.log_debug.addHandler(self.file_debug)
+        self.log_error.addHandler(self.file_error)
+
+    def debug(self, message):
+        self.log_debug.info(message)
+
+    def info(self, message):
+        self.log_debug.info(message)
+
+    def warning(self, message):
+        self.log_error.warning(message)
+
+    def error(self, message):
+        self.log_error.error(message)
+
+    def critical(self, message):
+        self.log_error.critical(message)

@@ -6,13 +6,17 @@ from datetime import datetime
 
 class Order:
     # TODO: Create __new__, __repr__ methods
+    def __repr__(self) -> str:
+        return f"Order {self.id}"  
     
     def __init__(self, id, bar:Bar, direction, price, order_type, size,
-                 stoplimit_price:float=None, parent_id:str=None, 
+                 stoplimit_price:float=None, parent_id:int=None, 
                  exit_profit:float=None, exit_loss:float=None,
-                 trailing_percent:float=None, bracket_role=None, expiry_date=None) -> None:
+                 trailing_percent:float=None, family_role=None, 
+                 family_id:int=None, expiry_date=None) -> None:
         
         # TODO : Assert the data types for each parameter
+        # assert isinstance(bar, Bar), 'bar passed is not a Bar object'
 
         self.id = id
         self.ticker = bar.ticker
@@ -29,38 +33,44 @@ class Order:
 
         self.trailing_percent = trailing_percent if (parent_id and trailing_percent) else None
         self.status = self.Status.Created
-        self.expiry_date = expiry_date or parse('9999-01-01') # Sets the expiry date for the order
+        self.expiry_date = expiry_date or parse('9999-01-01').astimezone(self.timestamp.tzinfo) # Sets the expiry date for the order
 
 
-        # If exit_profit and exit_loss are defined
-        self.bracket_orders = None
-        self.bracket_role = bracket_role
-        if (exit_profit and exit_loss): # if Both are specified
-            self.bracket_orders = {
-                'exit_profit' : {
+        # If exit_profit or exit_loss is defined; any child order
+        self.children_orders = None
+        self.family_id = family_id 
+        self.family_role = family_role
+        
+        if exit_profit:
+            self.children_orders['exit_profit'] = {
                     'symbol' : self.ticker,
                     'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
                     'timestamp' : self.timestamp,
                     'price' : exit_profit,
                     'order_type' : Order.ExecType.Limit,
                     'size' : self.size, # Default size should be the same size of the entry
-                    'parent_id' : self.id,
-                    'bracket_role' : Order.BrackerRole.ChildProfit
-                },
-                'exit_loss' : {
+                    'parent_id' : self.id, # Updated with trade_id
+                    'family_id' : self.family_id,
+                    'family_role' : Order.FamilyRole.ChildProfit
+                }
+            self.family_role = Order.FamilyRole.Parent
+        
+        if exit_loss:
+            self.children_orders['exit_loss'] = {
                     'symbol' : self.ticker,
-                    'direction' : self.direction, # Opposite direction to the parent
+                    'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
                     'timestamp' : self.timestamp,
                     'price' : exit_loss,
                     'order_type' : Order.ExecType.Stop,
                     'size' : self.size, # Default size should be the same size of the entry
-                    'parent_id' : self.id,
-                    'bracket_role' : Order.BrackerRole.ChildLoss
+                    'parent_id' : self.id, # Updated with trade_id
+                    'family_id' : self.family_id,
+                    'family_role' : Order.FamilyRole.ChildLoss
                 }
-            }
+            self.family_role = Order.FamilyRole.Parent
 
-            self.bracket_role = Order.BrackerRole.Parent
 
+        # TODO: Add other child orders to family_orders (trailing_percent)
 
     def __getattr__(self, __name: str) -> Any:
         try:
@@ -69,6 +79,40 @@ class Order:
             print (f"Attribute {__name} has not been set")
             raise e
     
+    def __lt__(self, other):
+        if isinstance(other, Order):
+            return self.price < other.price
+        return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, Order):
+            return self.price <= other.price
+        return NotImplemented
+    
+    def __gt__(self, other):
+        if isinstance(other, Order):
+            return self.price > other.price
+        return NotImplemented
+
+    def __ge__(self, other):
+        if isinstance(other, Order):
+            return self.price >= other.price
+        return NotImplemented
+    
+    def __eq__(self, other):
+        if isinstance(other, Order):
+            return self.id == other.id
+        return False 
+
+    def __hash__(self):
+        # Creating a tuple of relevant attributes for hashing
+        hash_tuple = (
+            self.id, self.ticker, self.direction, self.timestamp, self.size,
+            self.price, self.order_type, self.stoplimit_price, self.stoplimit_active, self.parent_id,
+            self.trailing_percent, self.status, self.expiry_date, self.children_orders,
+            self.family_id, self.family_role
+        )
+        return hash(hash_tuple)
 
     def filled(self, bar: Bar):
         """
@@ -146,7 +190,8 @@ class Order:
         Limit = 'Limit'
         Stop = 'Stop'
         StopLimit = 'StopLimit'
-        Exit = 'Exit'
+        Exit = 'Exit' # TODO: Implement this
+        Trailing = 'Trailing' # TODO: Implement this
 
     class Direction(Enum):
         Long = 'Long'
@@ -160,10 +205,9 @@ class Order:
         Cancelled = Canceled    # Creating an Alias
         Rejected = 'Rejected'   # Order failed to be added to engine's lists of orders
 
-    class BrackerRole(Enum):
+    class FamilyRole(Enum):
         Parent = 'Parent'
-        ChildProfit = 'Child_profit'
-        ChildLoss = 'Child_loss'
+        ChildProfit = 'ChildProfit'
+        ChildLoss = 'ChildLoss'
+        ChildTrail = 'ChildTrail'
 
-
-xx = Order(1, 'EURUSD', Order.Direction.Long, '0', 2345, Order.ExecType.Market, 10)

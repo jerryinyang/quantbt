@@ -8,3 +8,4 @@ test.*
 *.json
 __pycache__
 /databento
+*.log

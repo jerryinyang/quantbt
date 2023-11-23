@@ -2,25 +2,25 @@ from enum import Enum
 from orders import Order
 from utils import Bar
 
-class Trade(object):
-
-    def __init__(self, id, order:Order, timestamp, exit_price:float=None) -> None:
-    
+class Trade:
+    def __init__(self, id, order:Order, timestamp, family_id:int=None) -> None:
         self.id = id
-        self.order_id = order.order_id
         self.ticker = order.ticker
         self.direction = order.direction
-        self.timestamp = timestamp
         self.size = order.size
         
         self.entry_price = order.price
-        self.exit_price = exit_price
+        self.entry_timestamp = timestamp
+        self.entry_order_id = order.order_id
+
+        self.exit_price = order.price
+        self.exit_timestamp = timestamp
+        self.exit_order_id = order.order_id
         
         self.parent_id = order.parent_id
-        self.bracket_orders = order.bracket_orders # TODO : Use these to create order objects
+        self.family_id = family_id
 
         self.status = Trade.Status.Active
-
         self.params = self.Params()
 
 
@@ -30,18 +30,14 @@ class Trade(object):
         
     class Params:
         def __init__(self, entry_bar:Bar, entry_order:Order) -> None:
-            self.pnl = None
-            self.pnl_perc = None
-            self.commission = None
-            self.entry_bar_index = entry_bar.index
-            self.entry_order_id = entry_order.id
-            self.exit_bar_index = None
-            self.exit_order_id = None
-            self.exit_time = None
-            self.max_runup = None # Highest PnL Value During Trade
-            self.max_runup_perc = None # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
-            self.max_drawdown = None # Lowest PnL Value During Trade
-            self.max_drawdown_perc = None # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
+            self.pnl = 0
+            self.pnl_perc = 0
+            self.commission = 0
+            self.max_runup = 0 # Highest PnL Value During Trade
+            self.max_runup_perc = 0 # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
+            self.max_drawdown = 0 # Lowest PnL Value During Trade
+            self.max_drawdown_perc = 0 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
 
-    def update(self, bar):
+
+    def close(self, order:Order, bar:Bar):
         pass
