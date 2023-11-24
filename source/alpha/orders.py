@@ -37,40 +37,35 @@ class Order:
 
 
         # If exit_profit or exit_loss is defined; any child order
-        self.children_orders = None
+        self.children_orders = {}
         self.family_id = family_id 
         self.family_role = family_role
         
         if exit_profit:
             self.children_orders['exit_profit'] = {
-                    'symbol' : self.ticker,
-                    'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
-                    'timestamp' : self.timestamp,
+                    # 'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
+                    # 'timestamp' : self.timestamp,
                     'price' : exit_profit,
-                    'order_type' : Order.ExecType.Limit,
+                    'order_type' : Order.ExecType.ExitLimit,
                     'size' : self.size, # Default size should be the same size of the entry
-                    'parent_id' : self.id, # Updated with trade_id
-                    'family_id' : self.family_id,
-                    'family_role' : Order.FamilyRole.ChildProfit
+                    'family_role' : Order.FamilyRole.ChildExit
                 }
             self.family_role = Order.FamilyRole.Parent
         
         if exit_loss:
             self.children_orders['exit_loss'] = {
-                    'symbol' : self.ticker,
-                    'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
-                    'timestamp' : self.timestamp,
+                    # 'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
+                    # 'timestamp' : self.timestamp,
                     'price' : exit_loss,
-                    'order_type' : Order.ExecType.Stop,
+                    'order_type' : Order.ExecType.ExitStop,
                     'size' : self.size, # Default size should be the same size of the entry
-                    'parent_id' : self.id, # Updated with trade_id
-                    'family_id' : self.family_id,
-                    'family_role' : Order.FamilyRole.ChildLoss
+                    'family_role' : Order.FamilyRole.ChildExit
                 }
             self.family_role = Order.FamilyRole.Parent
 
 
         # TODO: Add other child orders to family_orders (trailing_percent)
+
 
     def __getattr__(self, __name: str) -> Any:
         try:
@@ -83,6 +78,7 @@ class Order:
         if isinstance(other, Order):
             return self.price < other.price
         return NotImplemented
+
 
     def __le__(self, other):
         if isinstance(other, Order):
@@ -109,7 +105,7 @@ class Order:
         hash_tuple = (
             self.id, self.ticker, self.direction, self.timestamp, self.size,
             self.price, self.order_type, self.stoplimit_price, self.stoplimit_active, self.parent_id,
-            self.trailing_percent, self.status, self.expiry_date, self.children_orders,
+            self.trailing_percent, self.status, self.expiry_date,
             self.family_id, self.family_role
         )
         return hash(hash_tuple)
@@ -147,10 +143,10 @@ class Order:
         if self.order_type == Order.ExecType.Market:
             return True, bar.close
 
-        elif self.order_type in [Order.ExecType.Limit, Order.ExecType.Stop]:
+        elif self.order_type in [Order.ExecType.Limit, Order.ExecType.Stop, Order.ExecType.ExitLimit, Order.ExecType.ExitStop, Order.ExecType.Trailing]:
             return bar.fills_price(self.price), self.price
 
-        elif self.order_type == Order.ExecType.StopLimit:
+        elif self.order_type in Order.ExecType.StopLimit:
             if not self.stoplimit_active:
                 if bar.fills_price(self.stoplimit_price):
                     self.stoplimit_active = True
@@ -176,8 +172,8 @@ class Order:
         return self
     
 
-    def complete(self):
-        self.status = Order.Status.Completed
+    def fill(self):
+        self.status = Order.Status.Filled
         return self
      
 
@@ -190,24 +186,24 @@ class Order:
         Limit = 'Limit'
         Stop = 'Stop'
         StopLimit = 'StopLimit'
-        Exit = 'Exit' # TODO: Implement this
+        ExitLimit = 'ExitLimit'
+        ExitStop = 'ExitStop'
         Trailing = 'Trailing' # TODO: Implement this
 
     class Direction(Enum):
-        Long = 'Long'
-        Short = 'Short'
+        Long = 1
+        Short = -1
 
     class Status(Enum):
         Created = 'Created'     # Order object created
         Accepted = 'Accepted'   # Order has been added to engine's lists of orders
-        Executed = 'Executed'   # Order object Has Been Filled  
+        Filled = 'Filled'   # Order object Has Been Filled  
         Canceled = 'Canceled'   # Order has been cancelled
         Cancelled = Canceled    # Creating an Alias
         Rejected = 'Rejected'   # Order failed to be added to engine's lists of orders
 
     class FamilyRole(Enum):
         Parent = 'Parent'
-        ChildProfit = 'ChildProfit'
-        ChildLoss = 'ChildLoss'
-        ChildTrail = 'ChildTrail'
+        ChildExit = 'ChildExit'
+        ChildReduce = 'ChildReduce'
 

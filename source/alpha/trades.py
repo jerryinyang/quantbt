@@ -11,11 +11,11 @@ class Trade:
         
         self.entry_price = order.price
         self.entry_timestamp = timestamp
-        self.entry_order_id = order.order_id
+        self.entry_order_id = order.id
 
         self.exit_price = order.price
         self.exit_timestamp = timestamp
-        self.exit_order_id = order.order_id
+        self.exit_order_id = order.id
         
         self.parent_id = order.parent_id
         self.family_id = family_id
@@ -29,7 +29,7 @@ class Trade:
         Closed = 'Closed'   # Order has been added to engine's lists of orders
         
     class Params:
-        def __init__(self, entry_bar:Bar, entry_order:Order) -> None:
+        def __init__(self) -> None:
             self.pnl = 0
             self.pnl_perc = 0
             self.commission = 0

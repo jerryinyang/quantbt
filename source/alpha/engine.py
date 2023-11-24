@@ -4,8 +4,11 @@ import pytz
 import numpy as np
 from orders import Order
 from trades import Trade
-from utils import Bar, Log as log
+from utils import Bar #, debug
 from typing import List, Dict
+import logging
+
+logging.basicConfig(filename='logs.log', level=logging.DEBUG)
 
 
 exectypes = Order.ExecType
@@ -15,7 +18,7 @@ class Engine:
 
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
     CAPITAL = 100000
-    PYRAMIDING = 100
+    PYRAMIDING = 1
 
     # FEES
     SWAP = 0
@@ -27,7 +30,9 @@ class Engine:
     trade_id = 0 # Initialize Trade Counter
     family_id = 0
 
-    def __set_dataframe_timezone(self, dataframes:dict[str,pd.DataFrame], date_range):
+    trade_count = 0
+
+    def __set_data(self, dataframes:dict[str,pd.DataFrame], date_range):
 
         for ticker, data in dataframes.items():
             df = pd.DataFrame(index=date_range)
@@ -37,7 +42,7 @@ class Engine:
             data = data[['open', 'high', 'low', 'close', 'volume']]
 
             df = df.join(data, how='left').ffill().bfill()
-            df['change_percent'] = df['close'].pct_change(fill_method=None).fillna(0)
+            df['price_change'] = df['close'] - df['close'].shift().fillna(0)
             dataframes[ticker] = df
 
         return dataframes
@@ -49,23 +54,28 @@ class Engine:
         self.date_range = pd.date_range(start=parse(start_date).astimezone(self.TZ), 
                                         end=parse(end_date).astimezone(self.TZ), 
                                         freq=self.resolution, tz=self.TZ, normalize=True)
-        self.dataframes = self.__set_dataframe_timezone(dataframes, self.date_range)
+        self.dataframes = self.__set_data(dataframes, self.date_range)
 
         self.portfolio : pd.DataFrame = None
         self.orders : List[Order] = []
-        self.trades : Dict[int, Order] = {} # Syntax : Dict [ trade_id : Trade()]
+        self.trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
         self.history : Dict[str , List[Order]] = {
             'orders' : [],
             'trades' : []
         }
-        
+    
     
     def init_portfolio(self, date_range:pd.DatetimeIndex):
         # Initialize Portfolio Dataframe: this would contain all the portfolio attributes
         portfolio =  pd.DataFrame({'timestamp': date_range}) # Initialize the full date range for the backtest
         portfolio.loc[0, 'balance'] = self.CAPITAL  # Initialize the backtest capital (initial balance)
         portfolio.loc[0, 'equity'] =  self.CAPITAL  # Initialize the equity
-        portfolio.loc[0, 'pnl'] = 0
+        portfolio.loc[0, 'open_pnl'] = 0
+        # portfolio.loc[0, 'closed_pnl'] = 0
+
+        for ticker in self.tickers:
+            portfolio.loc[0, f'{ticker} units'] = 0
+            portfolio.loc[0, f'{ticker} pnl'] = 0
 
         return portfolio
 
@@ -99,7 +109,7 @@ class Engine:
             
             # Create the bar objects for easier access to data
             bars = {}
-            for ticker in tickers:
+            for ticker in self.tickers:
 
                 bar = Bar(
                     open=self.dataframes[ticker].loc[date, 'open'],
@@ -114,16 +124,17 @@ class Engine:
                 )
                 bars[ticker] = bar
 
+            # If Date is not the first date
             if bar_index > 0:
-                previous_date = self.portfolio.loc[bar_index - 1, 'timestamp']
-                # Manage Pending Orders, Update Open Orders
-                self.compute_positions_stats(bars, bar_index)
-                
+                # Update Portfolio
+                self.compute_portfolio_stats(bar_index)
 
-                # Update self.portfolio Attributes (capital, pnl)
-                self.compute_portfolio_stats(self.portfolio, bar_index,  date, previous_date)
- 
+                # Manage Orders
+                self.compute_orders(bars)
 
+                # Manage Active Trades
+                self.compute_trades_stats(bars)
+            
             # Filter Asset Universe
             self.filter_asset_universe(self.date_range)
             
@@ -139,7 +150,8 @@ class Engine:
             # Executing Signals
             for ticker in non_eligible_assets:
                 # Units of asset in holding (Set to zero)
-                self.portfolio.loc[bar_index, f"{ticker} units"] = 0
+                self.portfolio.loc[bar_index, f'{ticker} units'] = 0
+                self.portfolio.loc[bar_index, f'{ticker} pnl'] = 0
             
             for ticker in eligible_assets:
 
@@ -149,11 +161,13 @@ class Engine:
                 # Tickers to Long
                 if ticker in alpha_long:
                     entry_price = bars[ticker].close
-                    position_size = 1 * risk_dollars / entry_price
+                    position_size = risk_dollars / entry_price
+
+                    exit_tp = entry_price * 1.1
+                    exit_sl = entry_price * 0.95
                     
                     # Create and Send Long Order
-                    self.buy(bars[ticker], entry_price, position_size, exectypes.Market)
-                    
+                    self.buy(bars[ticker], entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
                 
                  # Tickers to Short
                 elif ticker in alpha_short:
@@ -162,11 +176,6 @@ class Engine:
                     
                     # Create and Send Short Order
                     self.sell(bars[ticker], entry_price, position_size, exectypes.Market)
-
-                # Update Ticker Units in Portfolio
-                self.portfolio.loc[bar_index, f"{ticker} units"] = position_size
-
-                print('Next')
 
         print('Backtest Complete')
 
@@ -189,6 +198,10 @@ class Engine:
             # Add order into self.orders collection
             order.accept()
             self.orders.append(order)
+
+            # If Order is a market order, it should be placed immediately
+            if order_type == exectypes.Market:
+                self._manage_order(order, bar)
 
             return order
 
@@ -214,149 +227,170 @@ class Engine:
             order.accept()
             self.orders.append(order)
 
+            # If Order is a market order, it should be placed immediately
+            if order_type == exectypes.Market:
+                self._manage_order(order, bar)
+
             return order
 
         return None 
         
 
     def signal_generator(self, eligibles:list[str]) -> tuple:
-        import numpy as np
+        # import numpy as np
 
-        alpha_scores = { key : np.random.rand() for key in eligibles}
+        # alpha_scores = { key : np.random.rand() for key in eligibles}
 
-        alpha_scores = {key : value for key, value in sorted(alpha_scores.items(), key=lambda item : item[1])} # Sorts the dictionary
-        list_scores = list(alpha_scores.keys())
+        # alpha_scores = {key : value for key, value in sorted(alpha_scores.items(), key=lambda item : item[1])} # Sorts the dictionary
+        # list_scores = list(alpha_scores.keys())
         
-        alpha_long = [asset for asset in list_scores if alpha_scores[asset] >= .8]
-        alpha_short = [asset for asset in list_scores if alpha_scores[asset] <= .2]
+        # alpha_long = [asset for asset in list_scores if alpha_scores[asset] >= .8]
+        # alpha_short = [asset for asset in list_scores if alpha_scores[asset] <= .2]
 
-        return alpha_long, alpha_short
+        # return alpha_long, alpha_short
+
+        return ['AAPL'], []
              
   
-    def compute_portfolio_stats(self, portfolio, bar_index,  date, prev_date) -> tuple:
-        pnl = 0
+    def compute_portfolio_stats(self, bar_index):
 
+        date = self.portfolio.loc[bar_index, 'timestamp']
+        total_pnl = 0
         for ticker in self.tickers:
-            units_traded = portfolio.loc[bar_index - 1, f"{ticker} units"]
-            if units_traded == 0:
-                continue
+            prev_size = self.portfolio.loc[bar_index - 1, f'{ticker} units']
+            prev_pnl = self.portfolio.loc[bar_index - 1, f'{ticker} pnl']
+            price_change = self.dataframes[ticker].loc[date, 'price_change']
+            
+            self.portfolio.loc[bar_index, f'{ticker} units'] = prev_size
+            self.portfolio.loc[bar_index, f'{ticker} pnl'] = (prev_size * (price_change)) + prev_pnl
+            total_pnl += self.portfolio.loc[bar_index, f'{ticker} pnl']
 
-            delta = self.dataframes[ticker].loc[date, 'close'] - self.dataframes[ticker].loc[prev_date, 'close']
-            ticker_pnl = delta * units_traded
-
-            pnl += ticker_pnl # TODO: Use self.trades to sum up all the open trades pnl
-
-        portfolio.loc[bar_index, 'balance'] = portfolio.loc[bar_index - 1, 'balance'] + pnl
-        portfolio.loc[bar_index, 'pnl'] = pnl
-
-        return pnl
+        self.portfolio.loc[bar_index, 'balance'] = self.portfolio.loc[bar_index - 1, 'balance'] # Also updated when trades are closed
+        self.portfolio.loc[bar_index, 'equity'] = self.portfolio.loc[bar_index - 1, 'balance'] + total_pnl
+        self.portfolio.loc[bar_index, 'open_pnl'] = total_pnl # Total Unrealized PnL
 
 
-    def compute_orders(self, bars : dict[Bar], bar_index:int):
+    def compute_orders(self, bars : dict[Bar]):
         # TODO : Simulate realtime order execution (sorted)
-
-        cancelled_orders = []
-        rejected_orders = []
-        filled_orders = []
         
         # Manage Orders
         for order in self.orders:
             bar = bars[order.ticker]
 
-            if (order in cancelled_orders) or (order in rejected_orders) or (order in filled_orders):
-                # Order has already been removed
-                continue
-            
-            # Checks if Order is Expired
-            if order.expired(bar.timestamp):
-                # Add the order to cancelled orders
-                cancelled_orders.append(order)
-                log.info(f"Order {order.id} Expired, and has been cancelled")
-                continue
+            new_trade = self._manage_order(order, bar)
 
-            # If order is a child order (order.parent_id is set)
-            # Check if the parent order is active, skip if not
-            if order.parent_id:
-                if order.parent_id not in self.trades.keys():
-                    continue
+            if new_trade:
+                # New Trade was executed, rerun the loop
+                return self.compute_orders(bars)
 
-                # If the parent order is active, Handle Child Orders (Take Profit, Stop Loss, Trailing)
-                else:
-                    # Get the parent order, and other children orders where applicable
-                    parent = self.trades[order.parent_id]
-                    children = [child for child in self.orders if (child.parent_id == order.parent_id)] # Find orders with the same parent_id
-                    
-                    # Check if order is filled
-                    filled, fill_price = order.filled(bar) 
-                    if filled:
-                        order.complete()
-                        order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
 
-                        # Close Parent Trade
-                        self.close_trade(parent) # TODO : Implement close_trade
+    def compute_trades_stats(self, bars : dict[Bar]) -> float:
+        open_pnl = 0
+        for ticker in self.tickers:
+            ticker_trades = self.trades[ticker]
+            bar = bars[ticker]
+            for trade in ticker_trades.values():
+                # Update the trade
+                open_pnl += self._update_trade(trade, bar)
 
-                        # Add children to the list of cancelled orders
-                        cancelled_orders.extend(children)
-                        log.info(f"Trade {parent.id} Closed. Its children orders [{children}] have been cancelled")
- 
+            return open_pnl 
 
-            # Checks if order.price is filled and if number of open trades is less than the maximum allowed
-            filled, fill_price = order.filled(bar) 
-            if filled and (len(self.trades) < self.PYRAMIDING):
-                # Checks if current balance can accomodate the risk amount 
-                # (order.size * current price (fill price for limit orders)))
-                if (self.portfolio.loc[bar.index, 'balance'] > (order.size * fill_price)):
-                    order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
-                    
-                    # Execute the order
-                    self.execute_order(order)
-                    
-                    # Add order to filled orders
-                    filled_orders.append(order)
-                    log.info(f"Order {order.id} Filled Successfully.")
-
-                else:
-                    # Not Enough Cash to take the Trade
-                    # Add the order to rejected orders
-                    rejected_orders.append(order)
-            
-            elif (len(self.trades) > self.PYRAMIDING):
-                log.info(f'Maximum Open Trades reached. Order {order.id} has been skipped.')
     
-        # Update self.orders
-        self.manage_orders(cancelled_orders, rejected_orders, filled_orders)
+    def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
+        # If a price is not passed, use the bar's close price
+        price = price or bar.close
 
-        # Update Trades
-        for trade in self.trades.values():
-            self.update_trade(trade)
-            
+        pnl = (price - trade.entry_price) * trade.size
+        trade.params.commission = 0 # TODO: Model Commissions
 
-    def compute_trades_stats(self, bars : dict[Bar], bar_index:int):
+        trade.params.max_runup = max(trade.params.max_runup, pnl) # Highest PnL Value During Trade
+        trade.params.max_runup_perc = (trade.params.max_runup / (trade.entry_price * trade.size)) * 100 # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
+        trade.params.max_drawdown = min(trade.params.max_drawdown, pnl) # Lowest PnL Value During Trade
+        trade.params.max_drawdown_perc = (trade.params.max_drawdown / (trade.entry_price * trade.size)) * 100 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
+
+        trade.params.pnl = pnl
+        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.loc[bar.index, 'balance']) * 100
+
+        return pnl
+
+    
+    def _expire_order(self, order:Order | List[Order]):   
+        # If a list is passed, recursively expire each order
+        if isinstance(order, list):
+            for _order in order:
+                self._expire_order(_order)
         
-        for trade in self.trades.values():
-            # Update Trade Parameters
-            bar = bars[trade.ticker]
+        # Base Condition (order is Order instant)
+        else:
+            # Remove the order from self.orders
+            self.orders.remove(order)
 
-            pnl = (bar.close - trade.entry_price) * trade.size
-            trade.params.commission = 0 # TODO: Model Commissions
+            # Expire the order
+            order.cancel()
 
-            trade.params.max_runup = max(trade.params.max_runup, pnl) # Highest PnL Value During Trade
-            trade.params.max_runup_perc = (trade.params.max_runup / (trade.entry_price * trade.size)) * 100 # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
-            trade.params.max_drawdown = min(trade.params.max_drawdown, pnl) # Lowest PnL Value During Trade
-            trade.params.max_drawdown_perc = (trade.params.max_drawdown / (trade.entry_price * trade.size)) * 100 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
-
-            trade.params.pnl = pnl
-            trade.params.pnl_perc = (trade.params.pnl / self.portfolio.loc[bar.index, 'balance']) * 100
-            
-
-    def cancel_order(self, order:Order):
-        '''
-        Adds Cancelled/Rejected Order to History
-        '''
-        self.history['orders'].append(order)
+            # Add the order to orders history
+            self.history['orders'].append(order)
+            logging.info(f"Order {order.id} Expired.")
 
 
-    def execute_order(self, order:Order, bar:Bar):
+    def _cancel_order(self, order:Order | List[Order]):   
+        # If a list is passed, recursively cancel each order
+        if isinstance(order, list):
+            for _order in order:
+                self._cancel_order(_order)
+        
+        # Base Condition (order is Order instant)
+        else:
+            # Remove the order from self.orders
+            self.orders.remove(order)
+
+            # Cancel the order
+            order.cancel()
+
+            # Add the order to orders history
+            self.history['orders'].append(order)
+            logging.info(f"Order {order.id} Cancelled.")
+    
+
+    def _fill_order(self, order:Order | List[Order]):
+        # If a list is passed, recursively fill each order
+        if isinstance(order, list):
+            for _order in order:
+                self._fill_order(_order)
+        
+        # Base Condition (order is Order instant)
+        else:
+            # Remove the order from self.orders
+            self.orders.remove(order)
+
+            # Fill the order
+            order.fill()
+
+            # Add the order to orders history
+            self.history['orders'].append(order)
+            logging.info(f"Order {order.id} Filled Successfully.")
+
+
+    def _reject_order(self, order:Order):
+         # If a list is passed, recursively reject each order
+        if isinstance(order, list):
+            for _order in order:
+                self._reject_order(_order)
+        
+        # Base Condition (order is Order instant)
+        else:
+            # Remove the order from self.orders
+            self.orders.remove(order)
+
+            # Reject the order
+            order.reject()
+
+            # Add the order to orders history
+            self.history['orders'].append(order)
+            logging.info(f"Order {order.id} Rejected.")
+
+
+    def _execute_order(self, order:Order, bar:Bar):
         '''
         Generates Trade Objects from Order Object
         '''
@@ -392,19 +426,58 @@ class Engine:
                           **order.children_orders['exit_loss'])
                 
             # Execute the parent order
-            new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp, 
-                  exit_price=None, family_id=self.family_id)
+            new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp, family_id=self.family_id)
+            
         
         else:
             # Execute the Trade
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
         
         # Add Trade to self.trades
-        self.trades[self.trade_id] = new_trade
-        log.info(f'Trade {new_trade.id} Executed.')     
+        self.trades[bar.ticker][self.trade_id] = new_trade
+        logging.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})')
 
 
-    def manage_orders(self, cancelled_orders:List[Order], rejected_orders:List[Order], filled_orders:List[Order]):
+        # Update Ticker Units in Portfolio
+        self.portfolio.loc[bar.index, f'{bar.ticker} units'] += order.size * order.direction.value
+        self.portfolio.loc[bar.index, f'{bar.ticker} pnl'] = 0
+
+        logging.info(f'{self.portfolio.loc[bar.index]}')
+
+
+    def _close_trade(self, trade:Trade, bar:Bar, price:float):
+
+        # Update the Trade
+        self._update_trade(trade, bar, price)
+
+        # Update Portfolio Balance
+        self.portfolio.loc[bar.index, 'balance'] += trade.params.pnl
+
+        # Mark the trade as closed
+        trade.Status = Trade.Status.Closed
+
+        # Remove the trade from self.trade dictionary (key = trade_id)
+        self.trades[bar.ticker].pop(trade.id)
+
+        # Add trade trade history
+        self.history['trades'].append(trade)
+
+        # Update Portfolio for the Ticker, reduce the size
+        self.portfolio.loc[bar.index, f'{bar.ticker} units'] += trade.size * (-1 * trade.direction.value)
+        self.portfolio.loc[bar.index, f'{bar.ticker} pnl'] = trade.params.pnl
+
+        self.portfolio.loc[bar.index, 'balance'] = self.portfolio.loc[bar.index, 'balance'] + trade.params.pnl # Also updated when trades are closed
+        self.portfolio.loc[bar.index, 'equity'] -=  trade.params.pnl
+        self.portfolio.loc[bar.index, 'open_pnl'] -= trade.params.pnl # Total Unrealized PnL
+
+
+        # For debugging purposes
+        self.trade_count += 1
+        
+        logging.info(f'TRADE CLOSE : (Entry : {trade.entry_price}, Exit : ({price})) {self.portfolio.loc[bar.index]} \n Trade Count : {self.trade_count}')
+
+
+    def remove_orders(self, cancelled_orders:List[Order], rejected_orders:List[Order], filled_orders:List[Order]):
         removed_orders = cancelled_orders + rejected_orders + filled_orders
 
         # Remove these orders from self.orders
@@ -413,15 +486,81 @@ class Engine:
         # Adds the orders in the history
         for order in cancelled_orders:
             order.cancel()
-            self.cancel_order(order)
+            self._cancel_order(order)
             
         for order in rejected_orders:
             order.reject()
-            self.cancel_order(order)
+            self._cancel_order(order)
 
         for order in filled_orders:
-            order.complete()
-            self.cancel_order(order)        
+            order.fill()
+            self._cancel_order(order)        
+
+
+    def _manage_order(self,  order:Order, bar:Bar):
+        
+        # Checks if Order is Expired
+        if order.expired(bar.timestamp):
+            # Add the order to cancelled orders
+            return self._expire_order(order)
+
+        # If order is a child order (order.parent_id is set)
+        # Check if the parent order is active, skip if not
+        if (order.parent_id is not None) and (order.parent_id in self.trades[order.ticker].keys()):
+            # If the parent order is active, Handle Child Orders (Take Profit, Stop Loss, Trailing)
+            # Check if order is filled
+            filled, fill_price = order.filled(bar) 
+            if filled:
+                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
+
+                # Get the parent order, and other children orders where applicable
+                parent = self.trades[order.ticker][order.parent_id]
+
+                # Execute The Appropriate Action For the Differnet Types of Children Orders
+                
+                # ChildExit : # Close Parent Trade, at the order.price
+                if order.family_role == Order.FamilyRole.ChildExit:
+                    self._close_trade(parent, bar, price=order.price)
+                    
+                    # Find orders with the same parent_id
+                    children = [child for child in self.orders if (child.parent_id == order.parent_id)] 
+
+                    # Cancel the other children orders
+                    self._cancel_order(children)
+
+
+                # TODO ChildReduce : Reduce the parent (as in partial exits, trailing)
+                if order.family_role == Order.FamilyRole.ChildReduce:
+                    pass           
+                
+                return None
+
+        # Checks if order.price is filled and if number of open trades is less than the maximum allowed
+        filled, fill_price = order.filled(bar) 
+        if filled and (len(self.trades[bar.ticker]) < self.PYRAMIDING):
+
+            # Checks if current balance can accomodate the risk amount 
+            # (order.size * current price (fill price for limit orders)))
+            if (self.portfolio.loc[bar.index, 'balance'] >= (order.size * fill_price)):
+                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
+                
+                # Execute the order
+                self._execute_order(order, bar)
+                
+                # Add order to filled orders
+                self._fill_order(order)
+
+                # Return True, as a signal to run through all orders again
+                return True
+
+            else:
+                # Not Enough Cash to take the Trade
+                # Add the order to rejected orders
+                # logging.info('Not enough margin.')
+                return self._reject_order(order)
+        
+        elif filled and (len(self.trades[bar.ticker]) > self.PYRAMIDING):
+            return logging.info(f'Maximum Open Trades reached. Order {order.id} has been skipped.')
 
 
     def plot(self, array):
@@ -625,7 +764,6 @@ class BaseAlpha:
 
         # Show the plot
         plt.show()
-
 
 
 if __name__ == '__main__':

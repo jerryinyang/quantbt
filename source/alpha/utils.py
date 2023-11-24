@@ -1,5 +1,9 @@
-from datetime import datetime
+from datetime import datetime #, timedelta
 import logging
+import os
+# from enum import Enum
+# import re
+# from typing import Any
 
 class Bar:
     def __init__(self, 
@@ -104,3 +108,95 @@ class Log:
 
     def critical(self, message):
         self.log_error.critical(message)
+
+
+
+# class Resolution:
+    
+#     def __init__(self, timestr) -> None:
+#        print(self.breakdown(timestr))
+
+#     def parse(self, time_str):
+#         # Define the mapping of units to their corresponding multipliers in seconds
+#         time_units = {
+#             'm': 60, 
+#             'min': 60, 
+#             'h': 3600, 
+#             'H': 3600, 
+#             'd': 86400, 
+#             'D': 86400, 
+#             'w': 604800, 
+#             'W': 604800, 
+#             'M': 2592000
+#             }
+
+#         # Use regular expression to extract the number and unit from the input string
+#         match = re.match(r'(\d+)([a-zA-Z]+)', time_str)
+        
+#         if match:
+#             amount = int(match.group(1))
+#             unit = match.group(2) if match.group(2) is not None else 'm'  # Default to minutes if unit is not provided
+
+#             # Convert the time to seconds using the unit multiplier
+#             seconds = amount * time_units.get(unit, 60)
+
+#             # Return a timedelta object
+#             return timedelta(seconds=seconds)
+
+#         else:
+#             raise ValueError("Invalid time string format")
+        
+        
+#     def breakdown(self, time_str):
+#         self.parse(time_str)
+
+#         multiples = [x/timedelta(minutes=1) for x in Resolution.Interval.__members__.values()]
+
+#         return multiples
+
+    
+#     class Interval(Enum):
+#         MINUTES_1 = (timedelta(minutes=1), '1m')
+#         MINUTES_3 = (timedelta(minutes=3), '3m')
+#         MINUTES_5 = (timedelta(minutes=5), '5m')
+#         MINUTES_15 = (timedelta(minutes=15), '15m')
+#         MINUTES_30 = (timedelta(minutes=30), '30m')
+#         HOURS_1 = (timedelta(hours=1), '1h')
+#         HOURS_2 = (timedelta(hours=2), '2h')
+#         HOURS_4 = (timedelta(hours=4), '4h')
+#         DAY_1 = (timedelta(days=1), '1d')
+#         WEEK_1 = (timedelta(weeks=1), '1w')
+#         MONTH_1 = (timedelta(days=30), '1M')
+
+#         # def __getattribute__(self) -> str:
+#         #     return [self.value[0], self.value[1]]
+
+#         def __getattribute__(self, name: str) -> Any:
+#             return super().__getattribute__(name)[0]
+
+    
+# Iterate through all attributes
+# for attribute, value in vars(Resolution.Interval).items():
+#     print(f'{attribute}: {value}')
+
+# for value in Resolution.Interval.__members__.values():
+#     print(value)
+
+
+# Resolution('1m')
+
+def debug(display_text, show:bool=True):
+    def clear_terminal():
+        # Check the operating system
+        if os.name == 'posix':  # For Linux and macOS
+            os.system('clear')
+        elif os.name == 'nt':  # For Windows
+            os.system('cls')
+
+    if show:
+        print(display_text)
+    # x = input(" " )
+
+    # if x == 'x':
+    #     clear_terminal()
+    #     exit()
