@@ -1,21 +1,25 @@
-from datetime import datetime #, timedelta
+from datetime import datetime  # , timedelta
 import logging
 import os
+
 # from enum import Enum
 # import re
 # from typing import Any
 
+
 class Bar:
-    def __init__(self, 
-                 open: float, 
-                 high: float, 
-                 low: float, 
-                 close: float, 
-                 volume: int, 
-                 index: int, 
-                 timestamp: int | datetime, 
-                 resolution: str, 
-                 ticker: str) -> None:
+    def __init__(
+        self,
+        open: float,
+        high: float,
+        low: float,
+        close: float,
+        volume: int,
+        index: int,
+        timestamp: int | datetime,
+        resolution: str,
+        ticker: str,
+    ) -> None:
         """
         Represents a OHLCV bar with open, high, low, close prices, volume, index, timestamp, and resolution.
 
@@ -43,7 +47,7 @@ class Bar:
         >>> print(bar.timestamp)
         2023-11-22 12:30:45.678901
         """
-        
+
         self.open = open
         self.high = high
         self.low = low
@@ -54,42 +58,46 @@ class Bar:
         self.resolution = resolution
         self.ticker = ticker
 
-    
     def __repr__(self) -> str:
         return f"Bar(open={self.open}, high={self.high}, low={self.low}, \
                 close={self.close}, volume={self.volume}, index={self.index}, \
                     timestamp={self.timestamp}, resolution='{self.resolution}', \
                         ticker='{self.ticker}')"
 
-
-    def fills_price(self, price:float):
+    def fills_price(self, price: float):
         """
-            Check if the given price is within the high and low values of the bar.
-            
-            Parameters:
-            - price (float): The price to check.
+        Check if the given price is within the high and low values of the bar.
 
-            Returns:
-            - bool: True if the price is within the bar, False otherwise.
+        Parameters:
+        - price (float): The price to check.
+
+        Returns:
+        - bool: True if the price is within the bar, False otherwise.
         """
         return self.high >= price >= self.low
 
 
 class Log:
-    filename='debug.log'
-    
+    filename = "debug.log"
+
     def __init__(self) -> None:
-        self.log_debug = logging.getLogger('debug') # For Debug, Info
-        self.log_error = logging.getLogger('warning') # For Warning, Error, Critical
+        self.log_debug = logging.getLogger("debug")  # For Debug, Info
+        self.log_error = logging.getLogger("warning")  # For Warning, Error, Critical
 
         self.log_debug.setLevel(logging.DEBUG)
         self.log_error.setLevel(logging.WARNING)
 
-        self.format_info = logging.Formatter(' [%(asctime)s] %(levelname)s --> %(message)s')
-        self.format_error = logging.Formatter(' ***** %(levelname)s ***** \n[ %(pathname)s:%(lineno)d:%(funcName)s ]\nMESSAGE:\n%(message)s')
+        self.format_info = logging.Formatter(
+            " [%(asctime)s] %(levelname)s --> %(message)s"
+        )
+        self.format_error = logging.Formatter(
+            " ***** %(levelname)s ***** \n[ %(pathname)s:%(lineno)d:%(funcName)s ]\nMESSAGE:\n%(message)s"
+        )
 
-        self.file_debug = logging.FileHandler('logs.log').setFormatter(self.format_info)
-        self.file_error = logging.FileHandler('logs.log').setFormatter(self.format_error)
+        self.file_debug = logging.FileHandler("logs.log").setFormatter(self.format_info)
+        self.file_error = logging.FileHandler("logs.log").setFormatter(
+            self.format_error
+        )
 
         self.log_debug.addHandler(self.file_debug)
         self.log_error.addHandler(self.file_error)
@@ -110,29 +118,28 @@ class Log:
         self.log_error.critical(message)
 
 
-
 # class Resolution:
-    
+
 #     def __init__(self, timestr) -> None:
 #        print(self.breakdown(timestr))
 
 #     def parse(self, time_str):
 #         # Define the mapping of units to their corresponding multipliers in seconds
 #         time_units = {
-#             'm': 60, 
-#             'min': 60, 
-#             'h': 3600, 
-#             'H': 3600, 
-#             'd': 86400, 
-#             'D': 86400, 
-#             'w': 604800, 
-#             'W': 604800, 
+#             'm': 60,
+#             'min': 60,
+#             'h': 3600,
+#             'H': 3600,
+#             'd': 86400,
+#             'D': 86400,
+#             'w': 604800,
+#             'W': 604800,
 #             'M': 2592000
 #             }
 
 #         # Use regular expression to extract the number and unit from the input string
 #         match = re.match(r'(\d+)([a-zA-Z]+)', time_str)
-        
+
 #         if match:
 #             amount = int(match.group(1))
 #             unit = match.group(2) if match.group(2) is not None else 'm'  # Default to minutes if unit is not provided
@@ -145,8 +152,8 @@ class Log:
 
 #         else:
 #             raise ValueError("Invalid time string format")
-        
-        
+
+
 #     def breakdown(self, time_str):
 #         self.parse(time_str)
 
@@ -154,7 +161,7 @@ class Log:
 
 #         return multiples
 
-    
+
 #     class Interval(Enum):
 #         MINUTES_1 = (timedelta(minutes=1), '1m')
 #         MINUTES_3 = (timedelta(minutes=3), '3m')
@@ -174,7 +181,7 @@ class Log:
 #         def __getattribute__(self, name: str) -> Any:
 #             return super().__getattribute__(name)[0]
 
-    
+
 # Iterate through all attributes
 # for attribute, value in vars(Resolution.Interval).items():
 #     print(f'{attribute}: {value}')
@@ -185,13 +192,14 @@ class Log:
 
 # Resolution('1m')
 
-def debug(display_text, show:bool=True):
+
+def debug(display_text, show: bool = True):
     def clear_terminal():
         # Check the operating system
-        if os.name == 'posix':  # For Linux and macOS
-            os.system('clear')
-        elif os.name == 'nt':  # For Windows
-            os.system('cls')
+        if os.name == "posix":  # For Linux and macOS
+            os.system("clear")
+        elif os.name == "nt":  # For Windows
+            os.system("cls")
 
     if show:
         print(display_text)
