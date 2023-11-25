@@ -203,8 +203,14 @@ def debug(display_text, show: bool = True):
 
     if show:
         print(display_text)
-    # x = input(" " )
+    x = input(" " )
 
-    # if x == 'x':
-    #     clear_terminal()
-    #     exit()
+    if x == 'x':
+        clear_terminal()
+        
+        file_path = "logs.log"
+
+        with open(file_path, 'w'):
+            pass
+
+        exit()

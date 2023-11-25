@@ -22,9 +22,10 @@ class Order:
         parent_id: int = None,
         exit_profit: float = None,
         exit_loss: float = None,
+        exit_profit_percent:float=None,
+        exit_loss_percent:float=None,
         trailing_percent: float = None,
         family_role=None,
-        family_id: int = None,
         expiry_date=None,
     ) -> None:
         # TODO : Assert the data types for each parameter
@@ -53,25 +54,22 @@ class Order:
 
         # If exit_profit or exit_loss is defined; any child order
         self.children_orders = {}
-        self.family_id = family_id
         self.family_role = family_role
 
-        if exit_profit:
+        if (exit_profit or exit_profit_percent):
             self.children_orders["exit_profit"] = {
-                # 'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
-                # 'timestamp' : self.timestamp,
                 "price": exit_profit,
+                "exit_profit_percent": exit_profit_percent,
                 "order_type": Order.ExecType.ExitLimit,
                 "size": self.size,  # Default size should be the same size of the entry
                 "family_role": Order.FamilyRole.ChildExit,
             }
             self.family_role = Order.FamilyRole.Parent
 
-        if exit_loss:
+        if (exit_loss or exit_loss_percent):
             self.children_orders["exit_loss"] = {
-                # 'direction' : Order.Direction.Short if self.direction is Order.Direction.Long else Order.Direction.Long, # Opposite direction to the parent
-                # 'timestamp' : self.timestamp,
                 "price": exit_loss,
+                "exit_loss_percent" : exit_loss_percent,
                 "order_type": Order.ExecType.ExitStop,
                 "size": self.size,  # Default size should be the same size of the entry
                 "family_role": Order.FamilyRole.ChildExit,
@@ -128,7 +126,6 @@ class Order:
             self.trailing_percent,
             self.status,
             self.expiry_date,
-            self.family_id,
             self.family_role,
         )
         return hash(hash_tuple)
@@ -164,7 +161,7 @@ class Order:
         ```
         """
         if self.order_type == Order.ExecType.Market:
-            return True, bar.close
+            return True, bar.open
 
         elif self.order_type in [
             Order.ExecType.Limit,
