@@ -160,28 +160,82 @@ class Order:
         is_filled, fill_price = order.filled(bar)
         ```
         """
+        # For a Market order, the order is filled at the opening price of the bar.
         if self.order_type == Order.ExecType.Market:
             return True, bar.open
 
-        elif self.order_type in [
-            Order.ExecType.Limit,
-            Order.ExecType.Stop,
-            Order.ExecType.ExitLimit,
-            Order.ExecType.ExitStop,
-            Order.ExecType.Trailing,
-        ]:
-            return bar.fills_price(self.price), self.price
+        # For a Long direction:
+        elif self.direction == Order.Direction.Long:
+            # Buy Limit and Exit Limit orders are filled if the bar opens below the buy limit or fills the buy limit price.
+            if self.order_type in [
+                Order.ExecType.Limit,
+                Order.ExecType.ExitLimit,
+            ]:
+                if bar.open < self.price:
+                    return True, bar.open
+                elif bar.fills_price(self.price):
+                    return True, self.price
 
-        elif self.order_type in Order.ExecType.StopLimit:
-            if not self.stoplimit_active:
-                if bar.fills_price(self.stoplimit_price):
-                    self.stoplimit_active = True
-                return False, None
+            # Stop, Exit Stop, and Trailing orders are filled if the bar opens above the sell limit or fills the sell limit price.
+            elif self.order_type in [
+                Order.ExecType.Stop,
+                Order.ExecType.ExitStop,
+                Order.ExecType.Trailing,
+            ]:
+                if bar.open > self.price:
+                    return True, bar.open
+                elif bar.fills_price(self.price):
+                    return True, self.price
 
-            elif bar.fills_price(self.price):
-                return True, self.price
+            # StopLimit orders first check if the stop order has been triggered. If it has, the order is filled if the bar opens below the buy limit or fills the buy limit price.
+            elif self.order_type in Order.ExecType.StopLimit:
+                if not self.stoplimit_active:
+                    if (bar.open > self.stoplimit_price) or (bar.fills_price(self.stoplimit_price)):
+                        self.stoplimit_active = True
+                        return False, None
+                else:
+                    if bar.open < self.price:
+                        return True, bar.open
+                    elif bar.fills_price(self.price):
+                        return True, self.price
 
-        return False, None
+        # For a Short direction:
+        elif self.direction == Order.Direction.Short:
+            # Sell Limit and Exit Limit orders are filled if the bar opens above the sell limit or fills the sell limit price.
+            if self.order_type in [
+                Order.ExecType.Limit,
+                Order.ExecType.ExitLimit,
+            ]:
+                if bar.open > self.price:
+                    return True, bar.open
+                elif bar.fills_price(self.price):
+                    return True, self.price
+
+            # Stop, Exit Stop, and Trailing orders are filled if the bar opens below the sell stop or fills the sell stop price.
+            elif self.order_type in [
+                Order.ExecType.Stop,
+                Order.ExecType.ExitStop,
+                Order.ExecType.Trailing,
+            ]:
+                if bar.open < self.price:
+                    return True, bar.open
+                elif bar.fills_price(self.price):
+                    return True, self.price
+
+            # StopLimit orders first check if the stop order has been triggered. If it has, the order is filled if the bar opens above the sell limit or fills the sell limit price.
+            elif self.order_type in Order.ExecType.StopLimit:
+                if not self.stoplimit_active:
+                    if (bar.open < self.stoplimit_price) or (bar.fills_price(self.stoplimit_price)):
+                        self.stoplimit_active = True
+                        return False, None
+                else:
+                    if bar.open > self.price:
+                        return True, bar.open
+                    elif bar.fills_price(self.price):
+                        return True, self.price
+
+        # If none of the conditions are met, the order is not filled.
+        return False, None    
 
     def expired(self, date: str | datetime):
         return date >= self.expiry_date

@@ -1,17 +1,10 @@
 # Tasks on `alpha.py`
-
-- [x] Update the portfolio calculations
-- [x] Change default signal generation algorithm for Engine class
-- [x] For trades with children, rerun the manage_orders methods after executing the trade
-- [x] Add self.close_trade() method in engine.Engine
-- [x] Market orders should be executed immediately they are sent, not waiting for the next bar.
-
-- [x] Complete exit percentage implementation
-- [x] Remove family id
 - [ ] Debug performance
 
 - [ ] Sort orders for fills
 - [ ] More testing and debugging for robust strategies
+- [ ] Correct Behaviour of market orders opening and closing on the same bar; Just had to take away the reruns after trade execution
+- [ ] Set precision for engine calculations
 
 
 # Tasks on `utils.Resoltuion`

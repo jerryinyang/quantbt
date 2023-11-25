@@ -4,8 +4,9 @@ import pytz
 import numpy as np
 from orders import Order
 from trades import Trade
-from utils import Bar # debug
+from utils import Bar, debug, clear_terminal  # noqa: F401
 from typing import List, Dict
+import matplotlib.pyplot as plt
 import logging
 
 logging.basicConfig(filename="logs.log", level=logging.INFO)
@@ -19,6 +20,7 @@ class Engine:
     DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
     CAPITAL = 100000
     PYRAMIDING = 1
+    PRECISION = 2
 
     # FEES
     SWAP = 0
@@ -32,7 +34,16 @@ class Engine:
     trade_count = 0
 
     def __set_data(self, dataframes:dict[str,pd.DataFrame], date_range):
+        def check_values(df, columns):
+                df_shifted = df[columns].shift(1)
+        
+                # Use the pandas DataFrame method 'ne' to create a new DataFrame where each cell is either True (if the corresponding cell in 'df' is not equal to the corresponding cell in 'df_shifted') or False.
+                df_different = df[columns].ne(df_shifted)
+                
+                # Use the pandas DataFrame method 'any' to create a Series where each element is True if any cell in the corresponding row in 'df_different' is True, and False otherwise.
+                return df_different.any(axis=1)
 
+        # Modify Dataframes to Desired Format
         for ticker, data in dataframes.items():
             df = pd.DataFrame(index=date_range)
     
@@ -44,15 +55,28 @@ class Engine:
             df["price_change"] = df["close"] - df["close"].shift().fillna(0)
             dataframes[ticker] = df
 
+            df["market_open"] = check_values(
+                    df, 
+                    ["open", "high", "low", "close", "volume"]
+                )
+            df["market_open"] = df["market_open"].astype(int)
+
+            debug(df["market_open"].value_counts())
+        
+
+        # TODO : Initial Universe Filter : Select the tickers to be included in the backtest
+        # Example : For Volume Based Strategies, exclude Forex data, because they don't aaply
+
         return dataframes
 
 
     def __init__(self, tickers:list[str], dataframes:dict[str,pd.DataFrame], resolution:str, start_date, end_date) -> None:
         self.resolution = resolution
         self.tickers = tickers
-        self.date_range = pd.date_range(start=parse(start_date).astimezone(self.TZ), 
-                                        end=parse(end_date).astimezone(self.TZ), 
-                                        freq=self.resolution, tz=self.TZ, normalize=True)
+        self.date_range = pd.date_range(start=parse(start_date, ignoretz=True), 
+                                        end=parse(end_date, ignoretz=True), 
+                                        freq=self.resolution, tz=self.TZ)
+
         self.dataframes = self.__set_data(dataframes, self.date_range)
 
         self.portfolio : pd.DataFrame = None
@@ -79,23 +103,28 @@ class Engine:
         return portfolio
 
 
-    def filter_asset_universe(self, date_range:pd.DatetimeIndex) -> None:
+    def filter_eligible_assets(self, date) -> None:
         """
-        Compute Available/ / Eligible Assets to Trade (apply Universe Filtering Rules).\n
+        Filter Eligible Assets to Trade (apply Universe Filtering Rules) on a specific day.\n
         Asset Eligibility can include asset tradable days (crypto -> 24/7, forex -> 24/5, futures -> Market Hours), holidays, etc.
         In summary, this will check which data is available for trading in what days, and mark them as eligible.
         """
-        def check_changes(row, columns):
-            changes = all(row[columns] != row[columns].shift(1))
-            return changes
+        # for ticker in self.tickers:
+        #     self.dataframes[ticker]["market_open"] = check_values(
+        #             self.dataframes[ticker], 
+        #             ["open", "high", "low", "close", "volume"]
+        #         ).fillna(value=0)
+        #     self.dataframes[ticker]["market_open"] = self.dataframes[ticker]["market_open"].astype(int)
         
-        for ticker in self.tickers:
-            self.dataframes[ticker]["eligibility"] = check_changes(self.dataframes[ticker], ["open", "high", "low", "close", "volume"])
-            self.dataframes[ticker]["eligibility"] = self.dataframes[ticker]["eligibility"].astype(int)
-            
-        return          
+        #     self.dataframes[ticker]["Day"] = self.dataframes[ticker].index.strftime("%A")    
 
-    
+        # return dataframes
+        eligible_assets = [ticker for ticker in self.tickers if self.dataframes[ticker].loc[date, "market_open"]]
+        non_eligible_assets = list(set(self.tickers) - set(eligible_assets))
+
+        return eligible_assets, non_eligible_assets
+
+
     def run_backtest(self):
         print("Initiating Backtest")
 
@@ -105,12 +134,11 @@ class Engine:
         # Iterate through each bar/index (timestamp) in the backtest range
         for bar_index in self.portfolio.index:
             date = self.portfolio.loc[bar_index, "timestamp"]
-            logging.info(f"\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< DAY {bar_index + 1} >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-            
+
             # Create the bar objects for easier access to data
             bars = {}
             for ticker in self.tickers:
-                logging.info(f"{ticker} Current Price : {self.dataframes[ticker].loc[date, 'close']} ; Change : {self.dataframes[ticker].loc[date, 'price_change']}" )
+                # logging.info(f"{ticker} Current Price : {self.dataframes[ticker].loc[date, 'close']} ; Change : {self.dataframes[ticker].loc[date, 'price_change']}" )
 
                 bar = Bar(
                     open=self.dataframes[ticker].loc[date, "open"],
@@ -130,17 +158,14 @@ class Engine:
                 # Update Portfolio
                 self.compute_portfolio_stats(bar_index)
 
-                # Manage Orders
+                # Process Orders
                 self.compute_orders(bars)
 
-                # Manage Active Trades
+                # Process Active Trades
                 self.compute_trades_stats(bars)
             
-            # Filter Asset Universe
-            self.filter_asset_universe(self.date_range)
-            
-            eligible_assets = [ticker for ticker in self.tickers if self.dataframes[ticker].loc[date, "eligibility"]]
-            non_eligible_assets = list(set(self.tickers) - set(eligible_assets))
+            # Filter Universe for Assets Eligible for Trading in a specific date
+            eligible_assets, non_eligible_assets = self.filter_eligible_assets(date)
 
             # Decision-making / Signal-generating Algorithm
             alpha_long, alpha_short = self.signal_generator(eligible_assets)
@@ -162,6 +187,7 @@ class Engine:
                 # Tickers to Long
                 if ticker in alpha_long:
                     entry_price = bars[ticker].close
+
                     position_size = risk_dollars / entry_price
 
                     exit_tp = entry_price * 1.1
@@ -169,18 +195,29 @@ class Engine:
                     
                     # Create and Send Long Order
                     self.buy(bars[ticker], entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
-                
+
                  # Tickers to Short
                 elif ticker in alpha_short:
                     entry_price = bars[ticker].close
                     position_size = -1 * risk_dollars / entry_price
+
+                    exit_tp = entry_price * 0.9
+                    exit_sl = entry_price * 1.5
                     
                     # Create and Send Short Order
-                    self.sell(bars[ticker], entry_price, position_size, exectypes.Market)
+                    self.sell(bars[ticker], entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
 
-            logging.info(f'{self.portfolio.loc[bar.index]}')
+            # logging.info(f'{self.portfolio.loc[bar.index]}')
+        
+        # Get the Equity Curve
+        self.plot_results({
+            'Equity' : self.portfolio['equity'].to_numpy(),
+            'Balance' : self.portfolio['balance'].to_numpy(),
+        })
 
+        # self.portfolio.to_csv('source/alpha/backtest.csv', index=True)
         print("Backtest Complete")
+
 
 
     def buy(self, bar, price, size:float, order_type:Order.ExecType, 
@@ -189,6 +226,7 @@ class Engine:
             exit_profit_percent:float=None, exit_loss_percent:float=None,
             trailing_percent:float=None, family_role=None, 
             expiry_date=None) -> Order:
+        
         
         if size:
             self.order_id += 1
@@ -200,8 +238,7 @@ class Engine:
             )
 
             # Add order into self.orders collection
-            order.accept()
-            self.orders.append(order)
+            self._add_order(order)
 
             return order
 
@@ -225,8 +262,7 @@ class Engine:
             ) 
 
             # Add order into self.orders collection
-            order.accept()
-            self.orders.append(order)
+            self._add_order(order)
 
             return order
 
@@ -246,9 +282,10 @@ class Engine:
 
         # return alpha_long, alpha_short
 
-        return ["AAPL", "TSLA"], ["GOOG"]
+        return ["AAPL"], []#, "TSLA"], ["GOOG"]
              
   
+
     def compute_portfolio_stats(self, bar_index, exclude_closed:bool=False):
 
         # Iterate through active trade for open_pnl and equity
@@ -281,16 +318,16 @@ class Engine:
 
     def compute_orders(self, bars : dict[Bar]):
         # TODO : Simulate realtime order execution (sorted)
-        
-        # Manage Orders
+
+        # Process Orders
         for order in self.orders:
             bar = bars[order.ticker]
 
-            new_trade = self._manage_order(order, bar)
+            # Don't Update Orders when market is closed
+            if not self.dataframes[ticker].loc[bar.timestamp, 'market_open']:
+                continue
 
-            if new_trade:
-                # New Trade was executed, rerun the loop
-                return self.compute_orders(bars)
+            self._process_order(order, bar)
 
 
     def compute_trades_stats(self, bars : dict[Bar]) -> float:
@@ -298,31 +335,117 @@ class Engine:
         for ticker in self.tickers:
             ticker_trades = self.trades[ticker]
             bar = bars[ticker]
+
+            # Don't Update Trades when market is closed
+            if not self.dataframes[ticker].loc[bar.timestamp, 'market_open']:
+                continue
+
             for trade in ticker_trades.values():
                 # Update the trade
                 open_pnl += self._update_trade(trade, bar)
 
-            return open_pnl 
+        return open_pnl 
 
+
+
+    # METHODS FOR ORDER PROCESSING
+    def _add_order(self, order:Order | List[Order]):
+        # If the new order is a market  
+        # If the order is a market order, and 
+        # The number of active trades for that ticker is at the maximum, reject the order
+        if (not order.parent_id) and (order.order_type == Order.ExecType.Market) and \
+            (self.count_active_trades(order.ticker) >= self.PYRAMIDING):
+            # Reject the order
+            self._reject_order(order, f'Maximum Actice Trades for {order.ticker} Reached.')
+            return
+        
+        # Accept Order
+        self._accept_order(order)
     
-    def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
-        # If a price is not passed, use the bar's close price
-        price = price or bar.close
 
-        pnl = (price - trade.entry_price) * trade.size
-        trade.params.commission = 0 # TODO: Model Commissions
+    def _process_order(self,  order:Order, bar:Bar):
+        
+        # Checks if Order is Expired
+        if order.expired(bar.timestamp):
+            # Add the order to cancelled orders
+            return self._expire_order(order)
 
-        trade.params.max_runup = max(trade.params.max_runup, pnl) # Highest PnL Value During Trade
-        trade.params.max_runup_perc = (trade.params.max_runup / (trade.entry_price * trade.size)) * 100 # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
-        trade.params.max_drawdown = min(trade.params.max_drawdown, pnl) # Lowest PnL Value During Trade
-        trade.params.max_drawdown_perc = (trade.params.max_drawdown / (trade.entry_price * trade.size)) * 100 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
+        # If order is a child order (order.parent_id is set)
+        # Check if the parent order is active, skip if not
+        if (order.parent_id is not None) and (order.parent_id in self.trades[order.ticker].keys()):
+            # If the parent order is active, Handle Child Orders (Take Profit, Stop Loss, Trailing)
+            # Check if order is filled
+            filled, fill_price = order.filled(bar) 
+            if filled:
+                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
 
-        trade.params.pnl = pnl
-        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.loc[bar.index, "balance"]) * 100
+                # Get the parent order, and other children orders where applicable
+                parent = self.trades[order.ticker][order.parent_id]
 
-        return pnl
+                # Execute The Appropriate Action For the Differnet Types of Children Orders
+                
+                # ChildExit : # Close Parent Trade, at the order.price
+                if order.family_role == Order.FamilyRole.ChildExit:
+                    self._close_trade(parent, bar, price=order.price)
+                    
+                    # Find orders with the same parent_id
+                    children = [child for child in self.orders if (child.parent_id == order.parent_id)] 
 
-    
+                    # Cancel the other children orders
+                    self._cancel_order(children)
+
+
+                # TODO ChildReduce : Reduce the parent (as in partial exits, trailing)
+                if order.family_role == Order.FamilyRole.ChildReduce:
+                    pass           
+                
+                return None
+
+        # Checks if order.price is filled and if number of open trades is less than the maximum allowed
+        filled, fill_price = order.filled(bar)
+
+        if filled and (len(self.trades[bar.ticker]) < self.PYRAMIDING):
+
+            # Checks if current balance can accomodate the risk amount 
+            # (order.size * current price (fill price for limit orders)))
+            if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):
+                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
+                
+                # Add order to filled orders
+                self._fill_order(order)
+
+                # Execute the order
+                self._execute_trade(order, bar)
+
+                # Return True, as a signal to run through all orders again
+                return True
+
+            else:
+                # Not Enough Cash to take the Trade
+                # Add the order to rejected orders
+                # logging.info("Not enough margin.")
+                return self._reject_order(order)
+        
+        elif filled and (len(self.trades[bar.ticker]) > self.PYRAMIDING):
+            return # logging.info(f"Maximum Open Trades reached. Order {order.id} has been skipped.")
+
+
+    def _accept_order(self, order:Order | List[Order]):
+        # If a list is passed, recursively accept each order
+        if isinstance(order, list):
+            for _order in order:
+                self._accept_order(_order)
+        
+        # Base Condition (order is Order instant)
+        else:
+            # Accept the order
+            order.accept()
+
+            # Add it to self.orders
+            self.orders.append(order)
+            # logging.info(f"Order {order.id} Accepted Successfully.")
+
+
     def _expire_order(self, order:Order | List[Order]):   
         # If a list is passed, recursively expire each order
         if isinstance(order, list):
@@ -339,7 +462,7 @@ class Engine:
 
             # Add the order to orders history
             self.history["orders"].append(order)
-            logging.info(f"Order {order.id} Expired.")
+            # logging.info(f"Order {order.id} Expired.")
 
 
     def _cancel_order(self, order:Order | List[Order]):   
@@ -358,8 +481,8 @@ class Engine:
 
             # Add the order to orders history
             self.history["orders"].append(order)
-            logging.info(f"Order {order.id} Cancelled.")
-    
+            # logging.info(f"Order {order.id} Cancelled.")
+
 
     def _fill_order(self, order:Order | List[Order]):
         # If a list is passed, recursively fill each order
@@ -377,10 +500,10 @@ class Engine:
 
             # Add the order to orders history
             self.history["orders"].append(order)
-            logging.info(f"Order {order.id} Filled Successfully.")
+            # logging.info(f"Order {order.id} Filled Successfully.")
 
 
-    def _reject_order(self, order:Order):
+    def _reject_order(self, order:Order, message:str=None):
          # If a list is passed, recursively reject each order
         if isinstance(order, list):
             for _order in order:
@@ -388,23 +511,42 @@ class Engine:
         
         # Base Condition (order is Order instant)
         else:
-            # Remove the order from self.orders
-            self.orders.remove(order)
-
             # Reject the order
             order.reject()
 
             # Add the order to orders history
+            message = f'\nReason : {message}' if message else ''
             self.history["orders"].append(order)
-            logging.info(f"Order {order.id} Rejected.")
+            # logging.info(f"Order {order.id} Rejected." + message)
+
+    
+
+    # METHODS FOR TRADE PROCESSING
+    def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
+        # If a price is not passed, use the bar's close price
+        price = price or bar.close
+
+        pnl = (price - trade.entry_price) * trade.size
+        trade.params.commission = 0 # TODO: Model Commissions
+
+        trade.params.max_runup = max(trade.params.max_runup, pnl) # Highest PnL Value During Trade
+        trade.params.max_runup_perc = (trade.params.max_runup / (trade.entry_price * trade.size)) * 100 # Highest PnL Value During Trade / (Entry Price x Quantity) * 100
+        trade.params.max_drawdown = min(trade.params.max_drawdown, pnl) # Lowest PnL Value During Trade
+        trade.params.max_drawdown_perc = (trade.params.max_drawdown / (trade.entry_price * trade.size)) * 100 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
+
+        trade.params.pnl = pnl
+        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.loc[bar.index, "balance"]) * 100
+
+        return pnl    
 
 
-    def _execute_order(self, order:Order, bar:Bar):
+    def _execute_trade(self, order:Order, bar:Bar):
         """
         Generates Trade Objects from Order Object
         """
         self.trade_id += 1
         new_trade = None
+        _, fill_price = order.filled(bar)
 
         # Check If Order Contains Child Orders
         if order.children_orders:
@@ -458,7 +600,10 @@ class Engine:
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
 
+
+        logging.info(f"\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         logging.info(f"Trade {new_trade.id} Executed. (Entry Price : {order.price})")
+        logging.info(f'{self.portfolio.loc[bar.index]}')
 
 
     def _close_trade(self, trade:Trade, bar:Bar, price:float):
@@ -488,96 +633,28 @@ class Engine:
         self.trade_count += 1
         logging.info(f"TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))")
         logging.info(f'{self.portfolio.loc[bar.index]}')
-        # debug(f'Inspect Trade {trade.id}')
+        logging.info(f"\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
 
-    def remove_orders(self, cancelled_orders:List[Order], rejected_orders:List[Order], filled_orders:List[Order]):
-        removed_orders = cancelled_orders + rejected_orders + filled_orders
 
-        # Remove these orders from self.orders
-        self.orders = list(set(self.orders) - set(removed_orders))
-
-        # Adds the orders in the history
-        for order in cancelled_orders:
-            order.cancel()
-            self._cancel_order(order)
-            
-        for order in rejected_orders:
-            order.reject()
-            self._cancel_order(order)
-
-        for order in filled_orders:
-            order.fill()
-            self._cancel_order(order)        
-
-
-    def _manage_order(self,  order:Order, bar:Bar):
-        
-        # Checks if Order is Expired
-        if order.expired(bar.timestamp):
-            # Add the order to cancelled orders
-            return self._expire_order(order)
-
-        # If order is a child order (order.parent_id is set)
-        # Check if the parent order is active, skip if not
-        if (order.parent_id is not None) and (order.parent_id in self.trades[order.ticker].keys()):
-            # If the parent order is active, Handle Child Orders (Take Profit, Stop Loss, Trailing)
-            # Check if order is filled
-            filled, fill_price = order.filled(bar) 
-            if filled:
-                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
-
-                # Get the parent order, and other children orders where applicable
-                parent = self.trades[order.ticker][order.parent_id]
-
-                # Execute The Appropriate Action For the Differnet Types of Children Orders
-                
-                # ChildExit : # Close Parent Trade, at the order.price
-                if order.family_role == Order.FamilyRole.ChildExit:
-                    self._close_trade(parent, bar, price=order.price)
-                    
-                    # Find orders with the same parent_id
-                    children = [child for child in self.orders if (child.parent_id == order.parent_id)] 
-
-                    # Cancel the other children orders
-                    self._cancel_order(children)
-
-
-                # TODO ChildReduce : Reduce the parent (as in partial exits, trailing)
-                if order.family_role == Order.FamilyRole.ChildReduce:
-                    pass           
-                
+    # OTHER METHODS
+    def count_active_trades(self, ticker:str=None):  
+        # If ticker is passed       
+        if ticker is not None:
+            if ticker not in self.tickers:
                 return None
-
-        # Checks if order.price is filled and if number of open trades is less than the maximum allowed
-        filled, fill_price = order.filled(bar) 
-        if filled and (len(self.trades[bar.ticker]) < self.PYRAMIDING):
-
-            # Checks if current balance can accomodate the risk amount 
-            # (order.size * current price (fill price for limit orders)))
-            if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):
-                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
-                
-                # Add order to filled orders
-                self._fill_order(order)
-
-                # Execute the order
-                self._execute_order(order, bar)
-
-                # Return True, as a signal to run through all orders again
-                return True
-
-            else:
-                # Not Enough Cash to take the Trade
-                # Add the order to rejected orders
-                # logging.info("Not enough margin.")
-                return self._reject_order(order)
         
-        elif filled and (len(self.trades[bar.ticker]) > self.PYRAMIDING):
-            return logging.info(f"Maximum Open Trades reached. Order {order.id} has been skipped.")
+            return len(self.trades[ticker])
+        
+        count = {}
+        for ticker in self.tickers:
+            count[ticker] = len(self.trades[ticker])
 
+        return sum(count.values())
+        
 
-    def plot(self, array):
+    # PLOTTING METHODS
+    def plot_result(self, array):
         import matplotlib.pyplot as plt 
 
         # Generate x-axis values (assuming indices as x-axis)
@@ -596,184 +673,27 @@ class Engine:
 
         # Show the plot
         plt.show()
-
-
-# Default Class
-class BaseAlpha:
-    TZ = pytz.utc
-    DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-    def __init__(self, tickers:list[str], dataframes:dict[str,pd.DataFrame], resolution:str, start_date, end_date) -> None:
-        self.resolution = resolution
-        self.tickers = tickers
-        self.dataframes = self.__set_dataframe_timezone(dataframes)
-        self.start_date = parse(start_date, tzinfos={"UTC": self.TZ})
-        self.end_date = parse(end_date, tzinfos={"UTC": self.TZ})
-
-        self.capital = 10000
-
     
-    def init_portfolio(self, date_range:pd.DatetimeIndex):
-        # Initialize Portfolio Dataframe: this would contain all the portfolio attributes
 
-        portfolio =  pd.DataFrame({"timestamp": date_range}) # Initialize the full date range for the backtest
-        portfolio.loc[0, "capital"] = 10000 # Initialize the backtest capital
-
-        return portfolio
-
-
-    def __set_dataframe_timezone(self, dataframes:dict[str,pd.DataFrame]):
-
-        for ticker, df in dataframes.items():
-
-            df.index = pd.to_datetime(df.index.strftime(self.DATE_FORMAT)).tz_localize(self.TZ)
-            df.rename(columns={old_column : old_column.lower() for old_column in list(df.columns)}, inplace=True)
-            df = df[["open", "high", "low", "close", "volume"]]
-            dataframes[ticker] = df
-
-        return dataframes
-
-
-    def filter_asset_universe(self, date_range:pd.DatetimeIndex) -> None:
+    def plot_results(self, data_dict):
         """
-        Compute Available/ / Eligible Assets to Trade (apply Universe Filtering Rules).\n
-        Asset Eligibility can include asset tradable days (crypto -> 24/7, forex -> 24/5, futures -> Market Hours), holidays, etc.
-        In summary, this will check which data is available for trading in what days, and mark them as eligible.
+        Plot results from a dictionary of NumPy arrays.
+
+        Parameters:
+        - data_dict (dict): A dictionary where keys are plot titles and values are NumPy arrays.
         """
-        def check_changes(row, columns):
-            changes = all(row[columns] != row[columns].shift(1))
-            return changes
-        
-        for ticker in self.tickers:
-            df = pd.DataFrame(index=date_range)
-    
-            self.dataframes[ticker] = df.join(self.dataframes[ticker], how="left").ffill().bfill()
-            self.dataframes[ticker]["return"] = self.dataframes[ticker]["close"].pct_change()
-            self.dataframes[ticker]["eligibility"] = check_changes(self.dataframes[ticker], ["open", "high", "low", "close", "volume"])
-            self.dataframes[ticker]["eligibility"] = self.dataframes[ticker]["eligibility"].astype(int)
-            
-        return          
 
-    
-    def run_backtest(self):
-        print("Initiating Backtest")
+        # Create a new plot
+        plt.figure()
 
-        # Set Backtest Range
-        backtest_range = pd.date_range(start=self.start_date, end=self.end_date, freq=self.resolution, tz=self.TZ) # Full Backtest Date Range
-        portfolio = self.init_portfolio(backtest_range)
+        # Iterate through the dictionary items
+        for title, values in data_dict.items():
+            # Plot the values
+            plt.plot(values, label=title)
 
-        equity = np.array([])
-        
-        # Iterate through each bar/index (timestamp) in the backtest range
-        for bar_index in portfolio.index:
-            date = portfolio.loc[bar_index, "timestamp"]
-
-            if bar_index > 0:
-                # Manage Pending Orders
-                # Update Open Orders
-                # Update Portfolio Attributes (capital)
-
-                # Compute the PnL
-                previous_date = portfolio.loc[bar_index - 1, "timestamp"]
-                pnl, capital_return = self.compute_pnl_stats(portfolio, bar_index,  date, previous_date)
-                equity = np.append(equity, portfolio.loc[bar_index, "capital"])
-
-            # Filter Asset Universe
-            self.filter_asset_universe(backtest_range)
-            
-            eligible_assets = [ticker for ticker in self.tickers if self.dataframes[ticker].loc[date, "eligibility"]]
-            non_eligible_assets = list(set(self.tickers) - set(eligible_assets))
-
-            # Decision-making / Signal-generating Algorithm
-            alpha_long, alpha_short = self.signal_generator(eligible_assets)
-            
-            non_eligible_assets = list(set(non_eligible_assets).union((set(eligible_assets) - set(alpha_long + alpha_short)))  )
-            eligible_assets = list(set(alpha_long + alpha_short))
-
-            for ticker in non_eligible_assets:
-                # Units of asset in holding (Set to zero)
-                portfolio.loc[bar_index, f"{ticker} weight"] = 0
-                portfolio.loc[bar_index, f"{ticker} units"] = 0
-            
-            total_nominal_value = 0
-
-            for ticker in eligible_assets:
-                direction = 1 if ticker in alpha_long else -1 if ticker in alpha_short else 0
-
-                risk_dollars = portfolio.loc[bar_index, "capital"] / (len(alpha_long) + len(alpha_short))
-                position_size = direction * risk_dollars / self.dataframes[ticker].loc[date, "close"]
-                portfolio.loc[bar_index, f"{ticker} units"] = position_size
-                total_nominal_value += abs(position_size * self.dataframes[ticker].loc[date, "close"])
-            
-            for ticker in eligible_assets:
-                units = portfolio.loc[bar_index, f"{ticker} units"]
-                ticker_nominal_value = units * self.dataframes[ticker].loc[date, "close"]
-                instrument_weight = ticker_nominal_value / total_nominal_value 
-                portfolio.loc[bar_index, f"{ticker} weight"] = instrument_weight
-
-            portfolio.loc[bar_index, "total nominal value"] = total_nominal_value
-            portfolio.loc[bar_index, "leverage"] = total_nominal_value / portfolio.loc[bar_index, "capital"]
-
-        
-        self.plot(equity)
-        print("Backtest Complete")
-
-
-    def signal_generator(self, eligibles:list[str]):
-        import numpy as np
-
-        alpha_scores = { key : np.random.rand() for key in eligibles}
-
-        alpha_scores = {key : value for key, value in sorted(alpha_scores.items(), key=lambda item : item[1])} # Sorts the dictionary
-        list_scores = list(alpha_scores.keys())
-        
-        alpha_long = [asset for asset in list_scores if alpha_scores[asset] >= .8]
-        alpha_short = [asset for asset in list_scores if alpha_scores[asset] <= .2]
-
-        return alpha_long, alpha_short
-             
-  
-    def compute_pnl_stats(self, portfolio, bar_index,  date, prev_date):
-        pnl = 0
-        nominal_return = 0
-
-        for ticker in self.tickers:
-            units_traded = portfolio.loc[bar_index - 1, f"{ticker} units"]
-            if units_traded == 0:
-                continue
-
-            # TODO : Use pct_change already calculated in filter_universe
-            delta = self.dataframes[ticker].loc[date, "close"] - self.dataframes[ticker].loc[prev_date, "close"]
-            ticker_pnl = delta * units_traded
-
-            pnl += ticker_pnl
-            nominal_return += portfolio.loc[bar_index - 1, f"{ticker} weight"] * self.dataframes[ticker].loc[date, "return"]
-
-        capital_return = nominal_return * portfolio.loc[bar_index - 1, "leverage"]
-
-        portfolio.loc[bar_index, "capital"] = portfolio.loc[bar_index - 1, "capital"] + pnl
-        portfolio.loc[bar_index, "pnl"] = pnl
-        portfolio.loc[bar_index, "nominal_return"] = nominal_return
-        portfolio.loc[bar_index, "capital_return"] = capital_return
-        
-        return pnl, capital_return
-
-
-    def plot(self, array):
-        import matplotlib.pyplot as plt 
-
-        # Generate x-axis values (assuming indices as x-axis)
-        x_values = np.arange(len(array))
-
-        # Plot the values
-        plt.plot(x_values, array, label="Equity Curve")
-
-        # Add labels and title
-        plt.xlabel("Time")
-        plt.ylabel("Equity Value")
-        plt.title("Equity Curve Plot")
-
-        # Add a legend
+        # Add labels and legend
+        plt.xlabel('X-axis')
+        plt.ylabel('Y-axis')
         plt.legend()
 
         # Show the plot
@@ -783,10 +703,13 @@ class BaseAlpha:
 if __name__ == "__main__":
     import yfinance as yf
     start_date = "2020-01-02"
-    end_date = "2023-12-31"
+    end_date = "2022-12-31"
 
+    clear_terminal()
+    with open('logs.log', 'w'):
+        pass
 
-    tickers = "AAPL TSLA GOOG".split(" ")
+    tickers = ['AAPL'] #"GOOG TSLA AAPL".split(" ")
     ticker_path = [f"source/alpha/{ticker}.parquet" for ticker in tickers]
 
     # Read Data
@@ -800,5 +723,4 @@ if __name__ == "__main__":
     dataframes = dict(zip(tickers, dfs))
 
     alpha = Engine(tickers, dataframes, "1d", start_date, end_date)
-
     alpha.run_backtest()

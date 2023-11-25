@@ -1,0 +1,19 @@
+[tool.ruff]
+
+# Exclude a variety of commonly ignored directories.
+
+extend-include = [
+    ".env", 
+    "root.tmp", 
+    "test.*", 
+    "*.vuerd.json", 
+    "*.csv", 
+    "*.parquet", 
+    "*.DS_Store", 
+    "*.json", 
+    "__pycache__", 
+    "/databento", 
+    "*.log", 
+    "__init__.py",
+    "~/anaconda3/envs/"
+]
