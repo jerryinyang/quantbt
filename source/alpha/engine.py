@@ -237,6 +237,8 @@ class Engine:
             # Add order into self.orders collection
             self._add_order(order)
 
+            # TODO: For non-Market Orders, there is a possibility for the order to be filled on the same bar, so rerun the order 
+
             return order
 
         return None 
@@ -363,15 +365,10 @@ class Engine:
             return
         
         # Accept Order
-        if order.order_type == exectypes.Market:
-            debug([order.timestamp, f"Order  {order.id} Sent", self.count_active_trades(order.ticker)])
         self._accept_order(order)
     
 
     def _process_order(self,  order:Order, bar:Bar):
-        if self.order_id == 62:
-            print(f'Exit Price : {order.price}')
-
 
         # Checks if Order is Expired
         if order.expired(bar.timestamp):
@@ -456,9 +453,6 @@ class Engine:
             # Add it to self.orders
             self.orders.append(order)
             # logging.info(f"Order {order.id} Accepted Successfully.")
-
-            if order.order_type == exectypes.Market:
-                debug([f"Market Order {order.id} Added."])
 
 
     def _expire_order(self, order:Order | List[Order]):   
@@ -569,6 +563,9 @@ class Engine:
         new_trade = None
         _, fill_price = order.filled(bar)
 
+        order_tp = None
+        order_sl = None
+
         # Check If Order Contains Child Orders
         if order.children_orders:
 
@@ -585,30 +582,34 @@ class Engine:
             # Send the child orders to the engine
             if order.direction == Order.Direction.Long:
                 # Exit Profit Order
-                self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_tp = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_profit"])
                 # Exit Loss Order
-                self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_sl = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_loss"])
             
             else:
                 # Exit Profit Order
-                self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_tp = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_profit"])
                 # Exit Loss Order
-                self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_sl = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_loss"])
                 
             # Execute the parent order
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
+            
+            # TODO : Check if Children Orders would be filled in that bar
+            # For this, we have sort the orders in their assumed execution order, base on the bar's configuration
+            
             
         
         else:
@@ -618,11 +619,8 @@ class Engine:
         # Add Trade to self.trades
         self.trades[bar.ticker][self.trade_id] = new_trade
 
-        debug([f"Trade from Order {order.id} executed. Trades : {self.trades[order.ticker]}", f"Order List : {self.orders}"])
-
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
-
 
         logging.info(f"\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         logging.info(f"Trade {new_trade.id} Executed. (Entry Price : {order.price})")
@@ -650,8 +648,6 @@ class Engine:
         # Update Portfolio Value for that ticker with Exit Price, Then Reduce Them
         self.portfolio.loc[bar.index, f"{bar.ticker} closed_pnl"] += trade.params.pnl 
         self.compute_portfolio_stats(bar.index, exclude_closed=True)
-
-        debug([f"Closed Trade: {trade.exit_timestamp}"])
         
         # For debugging purposes
         self.trade_count += 1
@@ -727,7 +723,7 @@ class Engine:
 if __name__ == "__main__":
     import yfinance as yf
     start_date = "2020-01-02"
-    end_date = "2022-12-31"
+    end_date = "2023-12-31"
 
     clear_terminal()
     with open('logs.log', 'w'):

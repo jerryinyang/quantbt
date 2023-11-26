@@ -1,9 +1,7 @@
 # Tasks on `alpha.py`
 - [ ] Debug performance
 
-- [ ] Sort orders for fills
-- [ ] More testing and debugging for robust strategies
-- [ ] Correct Behaviour of market orders opening and closing on the same bar; Just had to take away the reruns after trade execution
+- [ ] IMPORTANT: Sort orders for fills
 - [ ] Set precision for engine calculations
 
 
