@@ -61,9 +61,6 @@ class Engine:
                 )
             df["market_open"] = df["market_open"].astype(int)
 
-            debug(df["market_open"].value_counts())
-        
-
         # TODO : Initial Universe Filter : Select the tickers to be included in the backtest
         # Example : For Volume Based Strategies, exclude Forex data, because they don't aaply
 
@@ -210,10 +207,10 @@ class Engine:
             # logging.info(f'{self.portfolio.loc[bar.index]}')
         
         # Get the Equity Curve
-        self.plot_results({
-            'Equity' : self.portfolio['equity'].to_numpy(),
-            'Balance' : self.portfolio['balance'].to_numpy(),
-        })
+        # self.plot_results({
+        #     'Equity' : self.portfolio['equity'].to_numpy(),
+        #     'Balance' : self.portfolio['balance'].to_numpy(),
+        # })
 
         # self.portfolio.to_csv('source/alpha/backtest.csv', index=True)
         print("Backtest Complete")
@@ -236,7 +233,7 @@ class Engine:
                 exit_profit_percent, exit_loss_percent, trailing_percent, family_role, 
                 expiry_date
             )
-
+            
             # Add order into self.orders collection
             self._add_order(order)
 
@@ -353,18 +350,29 @@ class Engine:
         # If the new order is a market  
         # If the order is a market order, and 
         # The number of active trades for that ticker is at the maximum, reject the order
-        if (not order.parent_id) and (order.order_type == Order.ExecType.Market) and \
+        if (not order.parent_id) and (order.order_type == exectypes.Market) and \
             (self.count_active_trades(order.ticker) >= self.PYRAMIDING):
             # Reject the order
             self._reject_order(order, f'Maximum Actice Trades for {order.ticker} Reached.')
             return
         
+        # If Market is not open on that day
+        if not self.dataframes[ticker].loc[order.timestamp, 'market_open']:
+            # Reject the order
+            self._reject_order(order, f'{order.ticker} Market is closed.')
+            return
+        
         # Accept Order
+        if order.order_type == exectypes.Market:
+            debug([order.timestamp, f"Order  {order.id} Sent", self.count_active_trades(order.ticker)])
         self._accept_order(order)
     
 
     def _process_order(self,  order:Order, bar:Bar):
-        
+        if self.order_id == 62:
+            print(f'Exit Price : {order.price}')
+
+
         # Checks if Order is Expired
         if order.expired(bar.timestamp):
             # Add the order to cancelled orders
@@ -372,12 +380,13 @@ class Engine:
 
         # If order is a child order (order.parent_id is set)
         # Check if the parent order is active, skip if not
-        if (order.parent_id is not None) and (order.parent_id in self.trades[order.ticker].keys()):
+        if (order.parent_id is not None) and  (order.parent_id in self.trades[order.ticker].keys()):
             # If the parent order is active, Handle Child Orders (Take Profit, Stop Loss, Trailing)
             # Check if order is filled
-            filled, fill_price = order.filled(bar) 
+
+            filled, fill_price = order.filled(bar)
             if filled:
-                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
+                order.price = fill_price
 
                 # Get the parent order, and other children orders where applicable
                 parent = self.trades[order.ticker][order.parent_id]
@@ -405,12 +414,15 @@ class Engine:
         filled, fill_price = order.filled(bar)
 
         if filled and (len(self.trades[bar.ticker]) < self.PYRAMIDING):
-
             # Checks if current balance can accomodate the risk amount 
             # (order.size * current price (fill price for limit orders)))
-            if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):
-                order.price = fill_price # TODO: Maybe redundant, except slippage is to be applied
-                
+
+            # During slippage, recalculate order size for actual fill price
+            if order.order_type != fill_price:
+                order.size = self._recalculate_market_order_size(order, fill_price)
+                order.price = fill_price
+
+            if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):                
                 # Add order to filled orders
                 self._fill_order(order)
 
@@ -444,6 +456,9 @@ class Engine:
             # Add it to self.orders
             self.orders.append(order)
             # logging.info(f"Order {order.id} Accepted Successfully.")
+
+            if order.order_type == exectypes.Market:
+                debug([f"Market Order {order.id} Added."])
 
 
     def _expire_order(self, order:Order | List[Order]):   
@@ -520,6 +535,12 @@ class Engine:
             # logging.info(f"Order {order.id} Rejected." + message)
 
     
+    def _recalculate_market_order_size(self, order:Order, fill_price:float):
+        '''
+        For market orders, the order size should be recalculated based on the fill price, to account for gaps in the market.
+        '''
+        risk_amount = abs(order.size * order.price) 
+        return order.direction.value * (risk_amount / fill_price)
 
     # METHODS FOR TRADE PROCESSING
     def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
@@ -597,6 +618,8 @@ class Engine:
         # Add Trade to self.trades
         self.trades[bar.ticker][self.trade_id] = new_trade
 
+        debug([f"Trade from Order {order.id} executed. Trades : {self.trades[order.ticker]}", f"Order List : {self.orders}"])
+
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
 
@@ -628,6 +651,7 @@ class Engine:
         self.portfolio.loc[bar.index, f"{bar.ticker} closed_pnl"] += trade.params.pnl 
         self.compute_portfolio_stats(bar.index, exclude_closed=True)
 
+        debug([f"Closed Trade: {trade.exit_timestamp}"])
         
         # For debugging purposes
         self.trade_count += 1

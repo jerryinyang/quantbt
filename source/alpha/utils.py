@@ -196,10 +196,12 @@ def clear_terminal():
         if os.name == "posix":  # For Linux and macOS
             os.system("clear")
 
-def debug(display_text, show: bool = True):
-
-    if show:
-        print(display_text)
+def debug(texts):
+    if not isinstance(texts, list):
+        texts = [texts]
+        
+    display_text = "\n".join([str(text) for text in texts])
+    print(display_text)
     x = input(" " )
 
     if x == 'x':
