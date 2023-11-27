@@ -16,7 +16,7 @@ class Order:
         bar: Bar,
         direction,
         price,
-        order_type,
+        exectype,
         size,
         stoplimit_price: float = None,
         parent_id: int = None,
@@ -38,7 +38,7 @@ class Order:
         self.size = size
 
         self.price = price
-        self.order_type = order_type
+        self.exectype = exectype
 
         self.stoplimit_price = stoplimit_price  # For Stop Limit Orders
         self.stoplimit_active = False  #
@@ -119,7 +119,7 @@ class Order:
             self.timestamp,
             self.size,
             self.price,
-            self.order_type,
+            self.exectype,
             self.stoplimit_price,
             self.stoplimit_active,
             self.parent_id,
@@ -161,13 +161,13 @@ class Order:
         ```
         """
         # For a Market order, the order is filled at the opening price of the bar.
-        if self.order_type == Order.ExecType.Market:
+        if self.exectype == Order.ExecType.Market:
             return True, bar.open
 
         # For a Long direction:
         elif self.direction == Order.Direction.Long:
             # Buy Limit and Exit Limit orders are filled if the bar opens below the buy limit or fills the buy limit price.
-            if self.order_type in [
+            if self.exectype in [
                 Order.ExecType.Limit,
                 Order.ExecType.ExitLimit,
             ]:
@@ -177,7 +177,7 @@ class Order:
                     return True, self.price
 
             # Stop, Exit Stop, and Trailing orders are filled if the bar opens above the sell limit or fills the sell limit price.
-            elif self.order_type in [
+            elif self.exectype in [
                 Order.ExecType.Stop,
                 Order.ExecType.ExitStop,
                 Order.ExecType.Trailing,
@@ -188,7 +188,7 @@ class Order:
                     return True, self.price
 
             # StopLimit orders first check if the stop order has been triggered. If it has, the order is filled if the bar opens below the buy limit or fills the buy limit price.
-            elif self.order_type in Order.ExecType.StopLimit:
+            elif self.exectype in Order.ExecType.StopLimit:
                 if not self.stoplimit_active:
                     if (bar.open > self.stoplimit_price) or (bar.fills_price(self.stoplimit_price)):
                         self.stoplimit_active = True
@@ -202,7 +202,7 @@ class Order:
         # For a Short direction:
         elif self.direction == Order.Direction.Short:
             # Sell Limit and Exit Limit orders are filled if the bar opens above the sell limit or fills the sell limit price.
-            if self.order_type in [
+            if self.exectype in [
                 Order.ExecType.Limit,
                 Order.ExecType.ExitLimit,
             ]:
@@ -212,7 +212,7 @@ class Order:
                     return True, self.price
 
             # Stop, Exit Stop, and Trailing orders are filled if the bar opens below the sell stop or fills the sell stop price.
-            elif self.order_type in [
+            elif self.exectype in [
                 Order.ExecType.Stop,
                 Order.ExecType.ExitStop,
                 Order.ExecType.Trailing,
@@ -223,7 +223,7 @@ class Order:
                     return True, self.price
 
             # StopLimit orders first check if the stop order has been triggered. If it has, the order is filled if the bar opens above the sell limit or fills the sell limit price.
-            elif self.order_type in Order.ExecType.StopLimit:
+            elif self.exectype in Order.ExecType.StopLimit:
                 if not self.stoplimit_active:
                     if (bar.open < self.stoplimit_price) or (bar.fills_price(self.stoplimit_price)):
                         self.stoplimit_active = True

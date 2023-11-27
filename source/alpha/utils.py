@@ -1,6 +1,8 @@
 from datetime import datetime  # , timedelta
-import logging
+# import logging
 import os
+# import math
+from bisect import bisect_left, bisect_right
 
 # from enum import Enum
 # import re
@@ -77,45 +79,45 @@ class Bar:
         return self.high >= price >= self.low
 
 
-class Log:
-    filename = "debug.log"
+# class Log:
+#     filename = "debug.log"
 
-    def __init__(self) -> None:
-        self.log_debug = logging.getLogger("debug")  # For Debug, Info
-        self.log_error = logging.getLogger("warning")  # For Warning, Error, Critical
+#     def __init__(self) -> None:
+#         self.log_debug = logging.getLogger("debug")  # For Debug, Info
+#         self.log_error = logging.getLogger("warning")  # For Warning, Error, Critical
 
-        self.log_debug.setLevel(logging.DEBUG)
-        self.log_error.setLevel(logging.WARNING)
+#         self.log_debug.setLevel(logging.DEBUG)
+#         self.log_error.setLevel(logging.WARNING)
 
-        self.format_info = logging.Formatter(
-            " [%(asctime)s] %(levelname)s --> %(message)s"
-        )
-        self.format_error = logging.Formatter(
-            " ***** %(levelname)s ***** \n[ %(pathname)s:%(lineno)d:%(funcName)s ]\nMESSAGE:\n%(message)s"
-        )
+#         self.format_info = logging.Formatter(
+#             " [%(asctime)s] %(levelname)s --> %(message)s"
+#         )
+#         self.format_error = logging.Formatter(
+#             " ***** %(levelname)s ***** \n[ %(pathname)s:%(lineno)d:%(funcName)s ]\nMESSAGE:\n%(message)s"
+#         )
 
-        self.file_debug = logging.FileHandler("logs.log").setFormatter(self.format_info)
-        self.file_error = logging.FileHandler("logs.log").setFormatter(
-            self.format_error
-        )
+#         self.file_debug = logging.FileHandler("logs.log").setFormatter(self.format_info)
+#         self.file_error = logging.FileHandler("logs.log").setFormatter(
+#             self.format_error
+#         )
 
-        self.log_debug.addHandler(self.file_debug)
-        self.log_error.addHandler(self.file_error)
+#         self.log_debug.addHandler(self.file_debug)
+#         self.log_error.addHandler(self.file_error)
 
-    def debug(self, message):
-        self.log_debug.info(message)
+#     def debug(self, message):
+#         self.log_debug.info(message)
 
-    def info(self, message):
-        self.log_debug.info(message)
+#     def info(self, message):
+#         self.log_debug.info(message)
 
-    def warning(self, message):
-        self.log_error.warning(message)
+#     def warning(self, message):
+#         self.log_error.warning(message)
 
-    def error(self, message):
-        self.log_error.error(message)
+#     def error(self, message):
+#         self.log_error.error(message)
 
-    def critical(self, message):
-        self.log_error.critical(message)
+#     def critical(self, message):
+#         self.log_error.critical(message)
 
 
 # class Resolution:
@@ -212,3 +214,39 @@ def debug(texts):
             pass
 
         exit()
+    
+
+def binary_search(a, x):
+    i = bisect_left(a, x)
+    if i != len(a) and a[i] == x:
+        return i
+    else:
+        return -1
+    
+
+def sorted_index(array, value):
+    # Inserts an item into an array in ascending order
+
+    # Type Checking
+    if not (value and isinstance(array, list)):
+        return 
+    
+    # Empty Array
+    if not array:
+        return 0
+    
+    # Return the right index to keep the array sorted
+    return bisect_right(array, value)
+    
+    
+
+
+        
+
+
+
+
+    
+    
+
+    

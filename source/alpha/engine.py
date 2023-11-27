@@ -4,10 +4,12 @@ import pytz
 import numpy as np
 from orders import Order
 from trades import Trade
-from utils import Bar, debug, clear_terminal  # noqa: F401
+from utils import Bar # noqa: F401
+from utils import debug, clear_terminal, sorted_index  # noqa: F401
 from typing import List, Dict
 import matplotlib.pyplot as plt
 import logging
+from bisect import bisect_left, bisect_right
 
 logging.basicConfig(filename="logs.log", level=logging.INFO)
 
@@ -207,10 +209,10 @@ class Engine:
             # logging.info(f'{self.portfolio.loc[bar.index]}')
         
         # Get the Equity Curve
-        # self.plot_results({
-        #     'Equity' : self.portfolio['equity'].to_numpy(),
-        #     'Balance' : self.portfolio['balance'].to_numpy(),
-        # })
+        self.plot_results({
+            'Equity' : self.portfolio['equity'].to_numpy(),
+            'Balance' : self.portfolio['balance'].to_numpy(),
+        })
 
         # self.portfolio.to_csv('source/alpha/backtest.csv', index=True)
         print("Backtest Complete")
@@ -237,7 +239,8 @@ class Engine:
             # Add order into self.orders collection
             self._add_order(order)
 
-            # TODO: For non-Market Orders, there is a possibility for the order to be filled on the same bar, so rerun the order 
+            if self.order_id == 130:
+                debug(order.price)
 
             return order
 
@@ -352,7 +355,7 @@ class Engine:
         # If the new order is a market  
         # If the order is a market order, and 
         # The number of active trades for that ticker is at the maximum, reject the order
-        if (not order.parent_id) and (order.order_type == exectypes.Market) and \
+        if (not order.parent_id) and (order.exectype == exectypes.Market) and \
             (self.count_active_trades(order.ticker) >= self.PYRAMIDING):
             # Reject the order
             self._reject_order(order, f'Maximum Actice Trades for {order.ticker} Reached.')
@@ -415,7 +418,7 @@ class Engine:
             # (order.size * current price (fill price for limit orders)))
 
             # During slippage, recalculate order size for actual fill price
-            if order.order_type != fill_price:
+            if order.exectype != fill_price:
                 order.size = self._recalculate_market_order_size(order, fill_price)
                 order.price = fill_price
 
@@ -451,6 +454,8 @@ class Engine:
             order.accept()
 
             # Add it to self.orders
+            # index = sorted_index(self.orders, order)
+            # self.orders.insert(index, order)
             self.orders.append(order)
             # logging.info(f"Order {order.id} Accepted Successfully.")
 
@@ -536,6 +541,25 @@ class Engine:
         risk_amount = abs(order.size * order.price) 
         return order.direction.value * (risk_amount / fill_price)
 
+
+    def _sort_for_execution(self, bar:Bar):
+        price = bar.open
+
+        # Split Orders Array by the bar.open
+        below_price = self.orders[:bisect_left(self.orders, price)]
+        above_price = self.orders[bisect_right(self.orders, price):]
+        eq_price = [order for order in self.orders if order.price == price]
+        below_price.reverse()
+        
+        # For Green Bars, execution is OLHC
+        if (bar.open <= bar.close):
+            return eq_price + below_price + above_price
+        
+        # For Red Bars, execution is OHLC
+        return eq_price + above_price + below_price
+
+
+
     # METHODS FOR TRADE PROCESSING
     def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
         # If a price is not passed, use the bar's close price
@@ -563,8 +587,8 @@ class Engine:
         new_trade = None
         _, fill_price = order.filled(bar)
 
-        order_tp = None
-        order_sl = None
+        order_above = None
+        order_below = None
 
         # Check If Order Contains Child Orders
         if order.children_orders:
@@ -582,35 +606,31 @@ class Engine:
             # Send the child orders to the engine
             if order.direction == Order.Direction.Long:
                 # Exit Profit Order
-                order_tp = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_above = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_profit"])
                 # Exit Loss Order
-                order_sl = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_below = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_loss"])
             
             else:
                 # Exit Profit Order
-                order_tp = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_below = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_profit"])
                 # Exit Loss Order
-                order_sl = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order.above = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_loss"])
-                
+            
+
             # Execute the parent order
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
-            
-            # TODO : Check if Children Orders would be filled in that bar
-            # For this, we have sort the orders in their assumed execution order, base on the bar's configuration
-            
-            
         
         else:
             # Execute the Trade
@@ -625,6 +645,16 @@ class Engine:
         logging.info(f"\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
         logging.info(f"Trade {new_trade.id} Executed. (Entry Price : {order.price})")
         logging.info(f'{self.portfolio.loc[bar.index]}')
+
+        # If there are children orders:
+        if order.children_orders:
+            # Check if Children Orders would be filled in that bar
+            if bar.open <= bar.close:
+                # For Green Bars, check the order above if it is filled on the same bar
+                self._process_order(order_above, bar)
+            else:
+                # For Red Bars, check the order below if it is filled on the same bar
+                self._process_order(order_below, bar)
 
 
     def _close_trade(self, trade:Trade, bar:Bar, price:float):
@@ -655,9 +685,7 @@ class Engine:
         logging.info(f'{self.portfolio.loc[bar.index]}')
         logging.info(f"\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
-
-
-    # OTHER METHODS
+    
     def count_active_trades(self, ticker:str=None):  
         # If ticker is passed       
         if ticker is not None:
