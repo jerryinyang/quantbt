@@ -60,7 +60,7 @@ class Order:
             self.children_orders["exit_profit"] = {
                 "price": exit_profit,
                 "exit_profit_percent": exit_profit_percent,
-                "order_type": Order.ExecType.ExitLimit,
+                "exectype": Order.ExecType.ExitLimit,
                 "size": self.size,  # Default size should be the same size of the entry
                 "family_role": Order.FamilyRole.ChildExit,
             }
@@ -70,7 +70,7 @@ class Order:
             self.children_orders["exit_loss"] = {
                 "price": exit_loss,
                 "exit_loss_percent" : exit_loss_percent,
-                "order_type": Order.ExecType.ExitStop,
+                "exectype": Order.ExecType.ExitStop,
                 "size": self.size,  # Default size should be the same size of the entry
                 "family_role": Order.FamilyRole.ChildExit,
             }

@@ -3,6 +3,7 @@
 
 - [ ] IMPORTANT: Sort orders for fills
 - [ ] Set precision for engine calculations
+- [ ] Move the calculation of the size to when an order is filled 
 
 
 # Tasks on `utils.Resoltuion`

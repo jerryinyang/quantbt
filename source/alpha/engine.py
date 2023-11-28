@@ -10,6 +10,7 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 import logging
 from bisect import bisect_left, bisect_right
+import os
 
 logging.basicConfig(filename="logs.log", level=logging.INFO)
 
@@ -85,6 +86,10 @@ class Engine:
             "orders" : [],
             "trades" : []
         }
+
+        # This would contain informations about sizing for each asset
+        # Equal weighting : All assets take the same share of the assets
+        self.tickers_weight = {ticker : 1 / len(self.tickers)  for ticker in self.tickers}
     
     
     def init_portfolio(self, date_range:pd.DatetimeIndex):
@@ -137,7 +142,6 @@ class Engine:
             # Create the bar objects for easier access to data
             bars = {}
             for ticker in self.tickers:
-                # logging.info(f"{ticker} Current Price : {self.dataframes[ticker].loc[date, 'close']} ; Change : {self.dataframes[ticker].loc[date, 'price_change']}" )
 
                 bar = Bar(
                     open=self.dataframes[ticker].loc[date, "open"],
@@ -181,7 +185,7 @@ class Engine:
             for ticker in eligible_assets:
 
                 # Calculate Allocation for Each Symbols (Equal Allocation)
-                risk_dollars = self.portfolio.loc[bar_index, "balance"] / (len(alpha_long) + len(alpha_short)) 
+                risk_dollars = self.portfolio.loc[bar_index, "balance"] / self.tickers_weight[ticker] 
 
                 # Tickers to Long
                 if ticker in alpha_long:
@@ -209,17 +213,17 @@ class Engine:
             # logging.info(f'{self.portfolio.loc[bar.index]}')
         
         # Get the Equity Curve
-        self.plot_results({
-            'Equity' : self.portfolio['equity'].to_numpy(),
-            'Balance' : self.portfolio['balance'].to_numpy(),
-        })
+        # self.plot_results({
+        #     'Equity' : self.portfolio['equity'].to_numpy(),
+        #     'Balance' : self.portfolio['balance'].to_numpy(),
+        # })
 
         # self.portfolio.to_csv('source/alpha/backtest.csv', index=True)
         print("Backtest Complete")
 
 
 
-    def buy(self, bar, price, size:float, order_type:Order.ExecType, 
+    def buy(self, bar, price, size:float, exectype:Order.ExecType, 
             stoplimit_price:float=None, parent_id:str=None,
             exit_profit:float=None, exit_loss:float=None,
             exit_profit_percent:float=None, exit_loss_percent:float=None,
@@ -227,10 +231,10 @@ class Engine:
             expiry_date=None) -> Order:
         
         
-        if size:
+        if size or (exectype == exectypes.Market):
             self.order_id += 1
             order = Order( # Create New Order Object 
-                self.order_id, bar, Order.Direction.Long, price, order_type, size,
+                self.order_id, bar, Order.Direction.Long, price, exectype, size,
                 stoplimit_price, parent_id, exit_profit, exit_loss,
                 exit_profit_percent, exit_loss_percent, trailing_percent, family_role, 
                 expiry_date
@@ -239,25 +243,22 @@ class Engine:
             # Add order into self.orders collection
             self._add_order(order)
 
-            if self.order_id == 130:
-                debug(order.price)
-
             return order
 
         return None 
     
 
-    def sell(self, bar, price, size:float, order_type:Order.ExecType, 
+    def sell(self, bar, price, size:float, exectype:Order.ExecType, 
             stoplimit_price:float=None, parent_id:str=None,
             exit_profit:float=None, exit_loss:float=None,
             exit_profit_percent:float=None, exit_loss_percent:float=None,
             trailing_percent:float=None, family_role=None, 
             expiry_date=None) -> Order:
         
-        if size:
+        if size or (exectype == exectypes.Market):
             self.order_id += 1
             order = Order( # Create New Order Object 
-                self.order_id, bar, Order.Direction.Short, price, order_type, size,
+                self.order_id, bar, Order.Direction.Short, price, exectype, size,
                 stoplimit_price, parent_id, exit_profit, exit_loss,
                 exit_profit_percent, exit_loss_percent, trailing_percent, family_role, 
                 expiry_date
@@ -351,8 +352,8 @@ class Engine:
 
 
     # METHODS FOR ORDER PROCESSING
-    def _add_order(self, order:Order | List[Order]):
-        # If the new order is a market  
+    def _add_order(self, order:Order | List[Order]):    
+# If the new order is a market  
         # If the order is a market order, and 
         # The number of active trades for that ticker is at the maximum, reject the order
         if (not order.parent_id) and (order.exectype == exectypes.Market) and \
@@ -413,34 +414,40 @@ class Engine:
         # Checks if order.price is filled and if number of open trades is less than the maximum allowed
         filled, fill_price = order.filled(bar)
 
-        if filled and (len(self.trades[bar.ticker]) < self.PYRAMIDING):
-            # Checks if current balance can accomodate the risk amount 
-            # (order.size * current price (fill price for limit orders)))
-
-            # During slippage, recalculate order size for actual fill price
-            if order.exectype != fill_price:
-                order.size = self._recalculate_market_order_size(order, fill_price)
+        if filled:
+            # For other exectypes, modify order.price to fill_price, without modifying the size
+            if not (order.price == fill_price):
                 order.price = fill_price
+            
+            # Check if trade is active
+            if self.count_active_trades(order.ticker) < self.PYRAMIDING:                                
+                
+                # Insufficient Balance for the Trade
+                if (self.portfolio.loc[bar.index, "balance"] < (order.size * fill_price)):
 
-            if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):                
-                # Add order to filled orders
-                self._fill_order(order)
+                    # Resize the order, if it is a Market Order
+                    if order.exectype == exectypes.Market:
+                        order.size = self._recalculate_market_order_size(order, bar, fill_price)
+                        order.price = fill_price
 
-                # Execute the order
-                self._execute_trade(order, bar)
+                    # For Pending Orders, cancel it
+                    else: 
+                        # Not Enough Cash to take the Trade
+                        # Add the order to rejected orders
+                        return self._cancel_order(order, f'Insufficient margin/balance for this position. {order.size * fill_price})')
+                    
+                    # Add order to filled orders
+                    self._fill_order(order)
 
-                # Return True, as a signal to run through all orders again
-                return True
+                    # Execute the order
+                    self._execute_trade(order, bar)
+
+                    # Return True, as a signal to run through all orders again
+                    return True
 
             else:
-                # Not Enough Cash to take the Trade
-                # Add the order to rejected orders
-                # logging.info("Not enough margin.")
-                return self._reject_order(order)
-        
-        elif filled and (len(self.trades[bar.ticker]) > self.PYRAMIDING):
-            return # logging.info(f"Maximum Open Trades reached. Order {order.id} has been skipped.")
-
+                return self._cancel_order(order, f"Maximum Open Trades reached. Order {order.id} has been skipped.")
+            
 
     def _accept_order(self, order:Order | List[Order]):
         # If a list is passed, recursively accept each order
@@ -457,6 +464,7 @@ class Engine:
             # index = sorted_index(self.orders, order)
             # self.orders.insert(index, order)
             self.orders.append(order)
+
             # logging.info(f"Order {order.id} Accepted Successfully.")
 
 
@@ -479,7 +487,7 @@ class Engine:
             # logging.info(f"Order {order.id} Expired.")
 
 
-    def _cancel_order(self, order:Order | List[Order]):   
+    def _cancel_order(self, order:Order | List[Order], message:str=None):   
         # If a list is passed, recursively cancel each order
         if isinstance(order, list):
             for _order in order:
@@ -494,8 +502,9 @@ class Engine:
             order.cancel()
 
             # Add the order to orders history
+            message = f'\nReason : {message}' if message else ''
             self.history["orders"].append(order)
-            # logging.info(f"Order {order.id} Cancelled.")
+            # logging.info(f"Order {order.id} Cancelled." + message)
 
 
     def _fill_order(self, order:Order | List[Order]):
@@ -517,7 +526,7 @@ class Engine:
             # logging.info(f"Order {order.id} Filled Successfully.")
 
 
-    def _reject_order(self, order:Order, message:str=None):
+    def _reject_order(self, order:Order | List[Order], message:str=None):
          # If a list is passed, recursively reject each order
         if isinstance(order, list):
             for _order in order:
@@ -534,11 +543,17 @@ class Engine:
             # logging.info(f"Order {order.id} Rejected." + message)
 
     
-    def _recalculate_market_order_size(self, order:Order, fill_price:float):
+    def _recalculate_market_order_size(self, order:Order, bar:Bar, fill_price:float):
         '''
         For market orders, the order size should be recalculated based on the fill price, to account for gaps in the market.
         '''
-        risk_amount = abs(order.size * order.price) 
+        
+        # Get Ticker Weight
+        weight = self.tickers_weight[order.ticker]
+
+        # Calculate the risk in cash
+        risk_amount = self.portfolio.loc[bar.index, "balance"] / weight
+
         return order.direction.value * (risk_amount / fill_price)
 
 
@@ -602,6 +617,9 @@ class Engine:
                 price = order.price * order.children_orders['exit_loss']['exit_loss_percent']
                 order.children_orders['exit_loss'].update(price=price, exit_loss_percent=None)
 
+            # Update the children order.size
+            order.children_orders['exit_profit'].update(size=order.size)
+            order.children_orders['exit_loss'].update(size=order.size)
 
             # Send the child orders to the engine
             if order.direction == Order.Direction.Long:
@@ -623,11 +641,10 @@ class Engine:
                           expiry_date=None,
                           **order.children_orders["exit_profit"])
                 # Exit Loss Order
-                order.above = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
+                order_above = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders["exit_loss"])
-            
 
             # Execute the parent order
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
@@ -760,12 +777,17 @@ if __name__ == "__main__":
     tickers = ['AAPL'] #"GOOG TSLA AAPL".split(" ")
     ticker_path = [f"source/alpha/{ticker}.parquet" for ticker in tickers]
 
-    # Read Data
-
     dfs = []
-    
+
     for ticker in tickers:
-        df = yf.download(ticker, start=start_date, end=end_date)
+        file_name = f"{ticker}.parquet"
+
+        if os.path.exists(file_name):
+            df = pd.read_csv(file_name, index_col='Date', parse_dates=True)
+        else:
+            df = yf.download(ticker, start=start_date, end=end_date)
+            df.to_csv(file_name)
+            
         dfs.append(df)
 
     dataframes = dict(zip(tickers, dfs))
