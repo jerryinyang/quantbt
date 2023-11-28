@@ -420,30 +420,40 @@ class Engine:
                 order.price = fill_price
             
             # Check if trade is active
-            if self.count_active_trades(order.ticker) < self.PYRAMIDING:                                
+            if self.count_active_trades(order.ticker) < self.PYRAMIDING:
                 
-                # Insufficient Balance for the Trade
-                if (self.portfolio.loc[bar.index, "balance"] < (order.size * fill_price)):
+                if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):                
+                    # Add order to filled orders
+                    self._fill_order(order)
 
-                    # Resize the order, if it is a Market Order
-                    if order.exectype == exectypes.Market:
-                        order.size = self._recalculate_market_order_size(order, bar, fill_price)
-                        order.price = fill_price
+                    # Execute the order
+                    self._execute_trade(order, bar)
 
-                    # For Pending Orders, cancel it
-                    else: 
-                        # Not Enough Cash to take the Trade
-                        # Add the order to rejected orders
-                        return self._cancel_order(order, f'Insufficient margin/balance for this position. {order.size * fill_price})')
+                    # Return True, as a signal to run through all orders again
+                    return True
+                
+                # Resize Market Orders without order.size set
+                elif order.exectype == exectypes.Market:
+                    order.size = self._recalculate_market_order_size(order, bar, fill_price)
+                    order.price = fill_price
+
+                     # Add order to filled orders
+                    self._fill_order(order)
+
+                    # Execute the order
+                    self._execute_trade(order, bar)
+
+                    # Return True, as a signal to run through all orders again
+                    return True
+
+                else:
                     
-                # Add order to filled orders
-                self._fill_order(order)
-
-                # Execute the order
-                self._execute_trade(order, bar)
-
-                # Return True, as a signal to run through all orders again
-                return True
+                    # Not Enough Cash to take the Trade
+                    # Add the order to rejected orders
+                    # logging.info("Not enough margin.")
+                    return self._cancel_order(order, f'Not enough margin/balance for this position. {order.size * fill_price})')
+                
+        
 
             else:
                 return self._cancel_order(order, f"Maximum Open Trades reached. Order {order.id} has been skipped.")
