@@ -78,7 +78,6 @@ class Bar:
         """
         return self.high >= price >= self.low
 
-
 # class Log:
 #     filename = "debug.log"
 
@@ -192,11 +191,16 @@ class Bar:
 #     print(value)
 
 
+
+
+
+
 # Resolution('1m')
 def clear_terminal():
         # Check the operating system
         if os.name == "posix":  # For Linux and macOS
             os.system("clear")
+
 
 def debug(texts):
     if not isinstance(texts, list):
@@ -240,8 +244,6 @@ def sorted_index(array, value):
     
     
 
-
-        
 
 
 

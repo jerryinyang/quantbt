@@ -1,16 +1,17 @@
-import pandas as pd
-from dateutil.parser import parse
-import pytz
-import numpy as np
-from orders import Order
-from trades import Trade
-from utils import Bar # noqa: F401
-from utils import debug, clear_terminal, sorted_index  # noqa: F401
-from typing import List, Dict
-import matplotlib.pyplot as plt
 import logging
-from bisect import bisect_left, bisect_right
 import os
+from bisect import bisect_left, bisect_right
+from typing import Dict, List
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import pytz
+from dateutil.parser import parse
+from quantbt.alpha.orders import Order
+from quantbt.alpha.trades import Trade
+from quantbt.alpha.utils import Bar  # noqa: F401
+from quantbt.alpha.utils import clear_terminal, debug, sorted_index  # noqa: F401
 
 logging.basicConfig(filename="logs.log", level=logging.INFO)
 
@@ -82,7 +83,7 @@ class Engine:
         self.portfolio : pd.DataFrame = None
         self.orders : List[Order] = []
         self.trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
-        self.history : Dict[str , List[Order]] = {
+        self.history : Dict[str , List[Order]|List[Trade]] = {
             "orders" : [],
             "trades" : []
         }
@@ -185,7 +186,7 @@ class Engine:
             for ticker in eligible_assets:
 
                 # Calculate Allocation for Each Symbols (Equal Allocation)
-                risk_dollars = self.portfolio.loc[bar_index, "balance"] / self.tickers_weight[ticker] 
+                risk_dollars = self.portfolio.loc[bar_index, "balance"] * self.tickers_weight[ticker] 
 
                 # Tickers to Long
                 if ticker in alpha_long:
@@ -205,7 +206,7 @@ class Engine:
                     position_size = -1 * risk_dollars / entry_price
 
                     exit_tp = entry_price * 0.9
-                    exit_sl = entry_price * 1.5
+                    exit_sl = entry_price * 1.05
                     
                     # Create and Send Short Order
                     self.sell(bars[ticker], entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
@@ -218,7 +219,10 @@ class Engine:
         #     'Balance' : self.portfolio['balance'].to_numpy(),
         # })
 
-        # self.portfolio.to_csv('source/alpha/backtest.csv', index=True)
+        report_trades, report_metrics = self.compute_reports()
+        report_trades.to_csv('data/report_trades.csv', index=True)
+        report_metrics.to_csv('data/report_metrics.csv', index=True)
+
         print("Backtest Complete")
 
 
@@ -285,7 +289,7 @@ class Engine:
 
         # return alpha_long, alpha_short
 
-        return ["AAPL"], []#, "TSLA"], ["GOOG"]
+        return ['AAPL'], []
              
   
 
@@ -330,7 +334,10 @@ class Engine:
             if not self.dataframes[ticker].loc[bar.timestamp, 'market_open']:
                 continue
 
-            self._process_order(order, bar)
+            rerun = self._process_order(order, bar)
+
+            if rerun:
+                return self.compute_orders(bars)
 
 
     def compute_trades_stats(self, bars : dict[Bar]) -> float:
@@ -420,9 +427,23 @@ class Engine:
                 order.price = fill_price
             
             # Check if trade is active
-            if self.count_active_trades(order.ticker) < self.PYRAMIDING:
+            if self.count_active_trades(order.ticker) < self.PYRAMIDING:                                
                 
-                if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):                
+                # Insufficient Balance for the Trade
+                if (self.portfolio.loc[bar.index, "balance"] < (order.size * fill_price)):
+
+                    # Resize the order, if it is a Market Order
+                    if order.exectype == exectypes.Market:
+                        order.size = self._recalculate_market_order_size(order, bar, fill_price)
+                        order.price = fill_price
+
+                    # For Pending Orders, cancel it
+                    else: 
+                        # Not Enough Cash to take the Trade
+                        # Add the order to rejected orders
+                        return self._cancel_order(order, f'Insufficient margin/balance for this position. {order.size * fill_price})')
+                
+                if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):
                     # Add order to filled orders
                     self._fill_order(order)
 
@@ -431,29 +452,6 @@ class Engine:
 
                     # Return True, as a signal to run through all orders again
                     return True
-                
-                # Resize Market Orders without order.size set
-                elif order.exectype == exectypes.Market:
-                    order.size = self._recalculate_market_order_size(order, bar, fill_price)
-                    order.price = fill_price
-
-                     # Add order to filled orders
-                    self._fill_order(order)
-
-                    # Execute the order
-                    self._execute_trade(order, bar)
-
-                    # Return True, as a signal to run through all orders again
-                    return True
-
-                else:
-                    
-                    # Not Enough Cash to take the Trade
-                    # Add the order to rejected orders
-                    # logging.info("Not enough margin.")
-                    return self._cancel_order(order, f'Not enough margin/balance for this position. {order.size * fill_price})')
-                
-        
 
             else:
                 return self._cancel_order(order, f"Maximum Open Trades reached. Order {order.id} has been skipped.")
@@ -562,7 +560,7 @@ class Engine:
         weight = self.tickers_weight[order.ticker]
 
         # Calculate the risk in cash
-        risk_amount = self.portfolio.loc[bar.index, "balance"] / weight
+        risk_amount = self.portfolio.loc[bar.index, "balance"] * weight
 
         return order.direction.value * (risk_amount / fill_price)
 
@@ -730,7 +728,7 @@ class Engine:
 
     # PLOTTING METHODS
     def plot_result(self, array):
-        import matplotlib.pyplot as plt 
+        import matplotlib.pyplot as plt
 
         # Generate x-axis values (assuming indices as x-axis)
         x_values = np.arange(len(array))
@@ -775,6 +773,238 @@ class Engine:
         plt.show()
 
 
+
+    # FOR REPORTS
+    def compute_reports(self):
+        '''
+        Generate Reports for the Backtest
+        '''
+
+        # Compute the Trades History
+        report_trades = self.compute_trades_report()
+        report_trades = self._process_trade_history(report_trades)
+
+        # Compute the metrics
+        report_metrics = self.compute_metrics_report(report_trades)
+
+
+        return report_trades, report_metrics
+    
+
+    def _process_trade_history(self, history):
+        history['cumm_profit'] = history['profit'].cumsum()
+        history['cumm_profit_perc'] = history['profit_percent'].cumsum()
+        history['entry_timestamp'] = pd.to_datetime(history['entry_timestamp'])
+        history['exit_timestamp'] = pd.to_datetime(history['exit_timestamp'])
+        history['duration'] = history['exit_timestamp'] - history['entry_timestamp']
+
+        history.index = history.entry_timestamp
+        history.index.name = 'date'
+        history = history.sort_values(by='date')
+
+        return history
+
+
+    def report_max_drawdown(self, data : pd.DataFrame):
+        max_dd = data['cumm_profit'].cummax() - data['cumm_profit']
+        max_dd_percent = data['cumm_profit_perc'].cummax() - data['cumm_profit_perc']
+        return max_dd.max(), max_dd_percent.max()
+
+
+    def report_max_runup(self, data : pd.DataFrame):
+        max_runup = data['cumm_profit'] - data['cumm_profit'].cummin()
+        max_runup_percent = data['cumm_profit_perc'] - data['cumm_profit_perc'].cummin()
+        return max_runup.max(), max_runup_percent.max()
+
+
+    def report_buy_and_hold_return(self, data : pd.DataFrame):
+
+        entry_price = data.loc[data.index[0], 'entry_price']
+        exit_price = data.loc[data.index[-1], 'exit_price']
+
+        ret = ((exit_price - entry_price) / entry_price)
+
+        return self.CAPITAL * ret , ret
+
+
+    def compute_trades_report(self):
+        trades_list = []
+        history = self.history["trades"]
+
+        for index in range(len(history)):
+            trade :Trade = history[index]
+            properties = {
+                'id' : trade.id,
+                'direction' : trade.direction.value,
+                'ticker' : trade.ticker,
+                'entry_timestamp' : trade.entry_timestamp.tz_localize(None),
+                'exit_timestamp' : trade.exit_timestamp.tz_localize(None),
+                'entry_price' : trade.entry_price,
+                'exit_price' : trade.exit_price,
+                'size' : trade.size,
+                'profit' : trade.params.pnl,
+                'profit_percent' : trade.params.pnl_perc,
+                'max_runup' : trade.params.max_runup,
+                'max_runup_percent' : trade.params.max_runup_perc,
+                'max_drawdown' : trade.params.max_drawdown,
+                'max_drawdown_percent' : trade.params.max_drawdown_perc,
+            }
+
+            trades_list.append(properties)
+            trades = pd.DataFrame(trades_list)
+            trades = trades.astype({
+                'id': int,
+                'direction': int,
+                'ticker': str,
+                'entry_timestamp': 'datetime64[ns]',
+                'exit_timestamp': 'datetime64[ns]',
+                'entry_price': float,
+                'exit_price': float,
+                'size': float,
+                'profit': float,
+                'profit_percent': float,
+                'max_runup': float,
+                'max_runup_percent': float,
+                'max_drawdown': float,
+                'max_drawdown_percent': float
+            })
+        
+        return trades
+
+
+    def compute_metrics_report(self, trades_report:pd.DataFrame):
+        
+        trades = trades_report
+
+        net_profit = trades['profit'].sum()         # Net Profit
+        gross_profit = trades[trades['profit'] > 0]['profit'].sum() # Gross Profit
+        gross_loss = trades[trades['profit'] < 0]['profit'].sum() # Gross Loss
+        average_pnl = trades['profit'].max() # Avg Trade
+        average_profit = trades[(trades['profit'] > 0)]['profit'].mean() # Avg Winning Trade
+        average_loss = trades[(trades['profit'] < 0)]['profit'].mean() # Avg Losing Trade
+        largest_profit = trades[(trades['profit'] > 0)]['profit'].max() # Largest Winning Trade
+        largest_loss = trades[(trades['profit'] < 0)]['profit'].min() # Largest Losing Trade
+        net_profit_percent = trades['profit_percent'].sum() # Net Profit
+        gross_profit_percent = trades[trades['profit_percent'] > 0]['profit_percent'].sum() # Gross Profit
+        gross_loss_percent = trades[trades['profit_percent'] < 0]['profit_percent'].sum() # Gross Loss
+        average_pnl_percent = trades['profit_percent'].max() # Avg Trade
+        average_profit_percent = trades[(trades['profit_percent'] > 0)]['profit_percent'].mean() # Avg Winning Trade
+        average_loss_percent = trades[(trades['profit_percent'] < 0)]['profit_percent'].mean() # Avg Losing Trade
+        largest_profit_percent = trades[(trades['profit_percent'] > 0)]['profit_percent'].max() # Largest Winning Trade
+        largest_loss_percent = trades[(trades['profit_percent'] < 0)]['profit_percent'].min() # Largest Losing Trade
+        max_runup, max_runup_percent = self.report_max_runup(trades) # Max Run-up
+        max_drawdown, max_drawdown_percent = self.report_max_drawdown(trades) # Max Drawdown
+        buy_hold_return, buy_hold_return_percent = self.report_buy_and_hold_return(trades) # Buy & Hold Return %
+
+        profit_factor = gross_profit / abs(gross_loss) # Profit Factor
+        total_closed_trades = len(trades) # Total Closed Trades
+        count_profit = len(trades[trades['profit'] > 0]) # Number Winning Trades
+        count_loss = len(trades[trades['profit'] < 0]) # Number Losing Trades
+        count_breakeven = len(trades[trades['profit'] == 0]) # Number Breakeven Trades
+        win_rate = (count_profit / total_closed_trades) * 100 # Percent Profitable
+        average_win_rate_percent = average_profit / average_loss # Ratio Avg Win / Avg Loss
+        average_duration = trades['duration'].mean().total_seconds() # Avg Duration in Trades
+        average_duration_winning = trades[(trades['profit'] > 0)]['duration'].mean().total_seconds() # Avg Duration in Winning Trades
+        average_duration_losing = trades[(trades['profit'] < 0)]['duration'].mean().total_seconds()  # Avg Duration in Losing history
+        
+                
+        # Create a dictionary for each set of metrics
+        metrics_data = {
+            # NET PROFIT
+            'net_profit': [net_profit],
+            'gross_profit': [gross_profit],
+            'gross_loss': [gross_loss],
+            'average_pnl': [average_pnl],
+            'average_profit': [average_profit],
+            'average_loss': [average_loss],
+            'largest_profit': [largest_profit],
+            'largest_loss': [largest_loss],
+
+            # PERCENTAGE
+            'net_profit_percent': [net_profit_percent],
+            'gross_profit_percent': [gross_profit_percent],
+            'gross_loss_percent': [gross_loss_percent],
+            'average_pnl_percent': [average_pnl_percent],
+            'average_profit_percent': [average_profit_percent],
+            'average_loss_percent': [average_loss_percent],
+            'largest_profit_percent': [largest_profit_percent],
+            'largest_loss_percent': [largest_loss_percent],
+
+            # OTHERS
+            'max_runup': [max_runup],
+            'max_runup_percent': [max_runup_percent],
+            'max_drawdown': [max_drawdown],
+            'max_drawdown_percent': [max_drawdown_percent],
+            'buy_hold_return': [buy_hold_return],
+            'buy_hold_return_percent': [buy_hold_return_percent],
+            'profit_factor': [profit_factor],
+            'total_closed_trades': [total_closed_trades],
+            'count_profit': [count_profit],
+            'count_loss': [count_loss],
+            'count_breakeven': [count_breakeven],
+            'win_rate': [win_rate],
+            'average_win_rate_percent': [average_win_rate_percent],
+            'average_duration': [average_duration],
+            'average_duration_winning': [average_duration_winning],
+            'average_duration_losing': [average_duration_losing]
+        }
+
+        metrics = pd.DataFrame(metrics_data, index=['Overall'])
+
+        # Set the columns datatypes
+        metrics = metrics.astype({
+            'net_profit': float,
+            'gross_profit': float,
+            'gross_loss': float,
+            'average_pnl': float,
+            'average_profit': float,
+            'average_loss': float,
+            'largest_profit': float,
+            'largest_loss': float,
+            'net_profit_percent': float,
+            'gross_profit_percent': float,
+            'gross_loss_percent': float,
+            'average_pnl_percent': float,
+            'average_profit_percent': float,
+            'average_loss_percent': float,
+            'largest_profit_percent': float,
+            'largest_loss_percent': float,
+            'max_runup': float,
+            'max_drawdown': float,
+            'buy_hold_return': float,
+            'buy_hold_return_percent': float,
+            'profit_factor': float,
+            'total_closed_trades': int,
+            'count_profit': int,
+            'count_loss': int,
+            'count_breakeven': int,
+            'win_rate': float,
+            'average_win_rate_percent': float,
+            'average_duration': float,
+            'average_duration_winning': float,
+            'average_duration_losing': float
+        })
+        
+        return metrics
+
+
+    def compute_full_history(self, portfolio):
+        '''
+        Compiles the portfolio/trade history for each backtest day
+        '''
+        return
+
+
+    def compute_params_report(self):
+        '''
+        This would compile all the parameters from the strategy applied. 
+        It should be able to communicate with the strategy object used in the backtest
+        '''
+
+        return
+
+
+
 if __name__ == "__main__":
     import yfinance as yf
     start_date = "2020-01-02"
@@ -784,13 +1014,13 @@ if __name__ == "__main__":
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL'] #"GOOG TSLA AAPL".split(" ")
-    ticker_path = [f"source/alpha/{ticker}.parquet" for ticker in tickers]
+    tickers = ['AAPL', "GOOG", 'TSLA']
+    ticker_path = [f"data/prices/{ticker}.csv" for ticker in tickers]
 
     dfs = []
 
     for ticker in tickers:
-        file_name = f"{ticker}.parquet"
+        file_name = f"data/prices/{ticker}.csv"
 
         if os.path.exists(file_name):
             df = pd.read_csv(file_name, index_col='Date', parse_dates=True)
