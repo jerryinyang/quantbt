@@ -13,14 +13,14 @@ from trades import Trade
 from utils import Bar  # noqa: F401
 from utils import clear_terminal, debug, sorted_index  # noqa: F401
 
-logging.basicConfig(filename="logs.log", level=logging.INFO)
+logging.basicConfig(filename='logs.log', level=logging.INFO)
 
 exectypes = Order.ExecType
 
 class Engine:
-    TZ = pytz.timezone("UTC")
+    TZ = pytz.timezone('UTC')
 
-    DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+    DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
     CAPITAL = 100000
     PYRAMIDING = 1
     PRECISION = 2
@@ -52,17 +52,17 @@ class Engine:
     
             data.index = pd.to_datetime(data.index.strftime(self.DATE_FORMAT)).tz_localize(self.TZ)
             data.rename(columns={old_column : old_column.lower() for old_column in list(data.columns)}, inplace=True)
-            data = data[["open", "high", "low", "close", "volume"]]
+            data = data[['open', 'high', 'low', 'close', 'volume']]
 
-            df = df.join(data, how="left").ffill().bfill()
-            df["price_change"] = df["close"] - df["close"].shift().fillna(0)
+            df = df.join(data, how='left').ffill().bfill()
+            df['price_change'] = df['close'] - df['close'].shift().fillna(0)
             dataframes[ticker] = df
 
-            df["market_open"] = check_values(
+            df['market_open'] = check_values(
                     df, 
-                    ["open", "high", "low", "close", "volume"]
+                    ['open', 'high', 'low', 'close', 'volume']
                 )
-            df["market_open"] = df["market_open"].astype(int)
+            df['market_open'] = df['market_open'].astype(int)
 
         # TODO : Initial Universe Filter : Select the tickers to be included in the backtest
         # Example : For Volume Based Strategies, exclude Forex data, because they don't aaply
@@ -83,8 +83,8 @@ class Engine:
         self.orders : List[Order] = []
         self.trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
         self.history : Dict[str , List[Order]|List[Trade]] = {
-            "orders" : [],
-            "trades" : []
+            'orders' : [],
+            'trades' : []
         }
 
         # This would contain informations about sizing for each asset
@@ -94,61 +94,61 @@ class Engine:
     
     def init_portfolio(self, date_range:pd.DatetimeIndex):
         # Initialize Portfolio Dataframe: this would contain all the portfolio attributes
-        portfolio =  pd.DataFrame({"timestamp": date_range}) # Initialize the full date range for the backtest
-        portfolio.loc[0, "balance"] = self.CAPITAL  # Initialize the backtest capital (initial balance)
-        portfolio.loc[0, "equity"] =  self.CAPITAL  # Initialize the equity
-        portfolio.loc[0, "open_pnl"] = 0
+        portfolio =  pd.DataFrame({'timestamp': date_range}) # Initialize the full date range for the backtest
+        portfolio.loc[0, 'balance'] = self.CAPITAL  # Initialize the backtest capital (initial balance)
+        portfolio.loc[0, 'equity'] =  self.CAPITAL  # Initialize the equity
+        portfolio.loc[0, 'open_pnl'] = 0
 
         for ticker in self.tickers:
-            portfolio.loc[0, f"{ticker} units"] = 0
-            portfolio.loc[0, f"{ticker} open_pnl"] = 0
-            portfolio.loc[0, f"{ticker} closed_pnl"] = 0
+            portfolio.loc[0, f'{ticker} units'] = 0
+            portfolio.loc[0, f'{ticker} open_pnl'] = 0
+            portfolio.loc[0, f'{ticker} closed_pnl'] = 0
 
         return portfolio
 
 
     def filter_eligible_assets(self, date) -> None:
-        """
+        '''
         Filter Eligible Assets to Trade (apply Universe Filtering Rules) on a specific day.\n
         Asset Eligibility can include asset tradable days (crypto -> 24/7, forex -> 24/5, futures -> Market Hours), holidays, etc.
         In summary, this will check which data is available for trading in what days, and mark them as eligible.
-        """
+        '''
         # for ticker in self.tickers:
-        #     self.dataframes[ticker]["market_open"] = check_values(
+        #     self.dataframes[ticker]['market_open'] = check_values(
         #             self.dataframes[ticker], 
-        #             ["open", "high", "low", "close", "volume"]
+        #             ['open', 'high', 'low', 'close', 'volume']
         #         ).fillna(value=0)
-        #     self.dataframes[ticker]["market_open"] = self.dataframes[ticker]["market_open"].astype(int)
+        #     self.dataframes[ticker]['market_open'] = self.dataframes[ticker]['market_open'].astype(int)
         
-        #     self.dataframes[ticker]["Day"] = self.dataframes[ticker].index.strftime("%A")    
+        #     self.dataframes[ticker]['Day'] = self.dataframes[ticker].index.strftime('%A')    
 
         # return dataframes
-        eligible_assets = [ticker for ticker in self.tickers if self.dataframes[ticker].loc[date, "market_open"]]
+        eligible_assets = [ticker for ticker in self.tickers if self.dataframes[ticker].loc[date, 'market_open']]
         non_eligible_assets = list(set(self.tickers) - set(eligible_assets))
 
         return eligible_assets, non_eligible_assets
 
 
     def run_backtest(self):
-        print("Initiating Backtest")
+        print('Initiating Backtest')
 
         # Set Backtest Range
         self.portfolio= self.init_portfolio(self.date_range)
         
         # Iterate through each bar/index (timestamp) in the backtest range
         for bar_index in self.portfolio.index:
-            date = self.portfolio.loc[bar_index, "timestamp"]
+            date = self.portfolio.loc[bar_index, 'timestamp']
 
             # Create the bar objects for easier access to data
             bars = {}
             for ticker in self.tickers:
 
                 bar = Bar(
-                    open=self.dataframes[ticker].loc[date, "open"],
-                    high=self.dataframes[ticker].loc[date, "high"],
-                    low=self.dataframes[ticker].loc[date, "low"],
-                    close=self.dataframes[ticker].loc[date, "close"],
-                    volume=self.dataframes[ticker].loc[date, "volume"],
+                    open=self.dataframes[ticker].loc[date, 'open'],
+                    high=self.dataframes[ticker].loc[date, 'high'],
+                    low=self.dataframes[ticker].loc[date, 'low'],
+                    close=self.dataframes[ticker].loc[date, 'close'],
+                    volume=self.dataframes[ticker].loc[date, 'volume'],
                     index=bar_index,
                     timestamp=date,
                     resolution=self.resolution,
@@ -179,13 +179,13 @@ class Engine:
             # Executing Signals
             for ticker in non_eligible_assets:
                 # Units of asset in holding (Set to zero)
-                self.portfolio.loc[bar_index, f"{ticker} units"] = 0
-                self.portfolio.loc[bar_index, f"{ticker} open_pnl"] = 0
+                self.portfolio.loc[bar_index, f'{ticker} units'] = 0
+                self.portfolio.loc[bar_index, f'{ticker} open_pnl'] = 0
             
             for ticker in eligible_assets:
 
                 # Calculate Allocation for Each Symbols (Equal Allocation)
-                risk_dollars = self.portfolio.loc[bar_index, "balance"] * self.tickers_weight[ticker] 
+                risk_dollars = self.portfolio.loc[bar_index, 'balance'] * self.tickers_weight[ticker] 
 
                 # Tickers to Long
                 if ticker in alpha_long:
@@ -219,10 +219,10 @@ class Engine:
         # })
 
         report_trades, report_metrics = self.compute_reports()
-        report_trades.to_csv('data/report_trades.csv', index=True)
-        report_metrics.to_csv('data/report_metrics.csv', index=True)
+        report_trades.to_csv('data/results/report_trades.csv', index=True)
+        report_metrics.to_csv('data/results/report_metrics.csv', index=True)
 
-        print("Backtest Complete")
+        print('Backtest Complete')
 
 
 
@@ -288,7 +288,7 @@ class Engine:
 
         # return alpha_long, alpha_short
 
-        return ['AAPL'], []
+        return ['AAPL', 'GOOG'], []
              
   
 
@@ -307,19 +307,19 @@ class Engine:
                 units += trade.size
                 pnl += trade.params.pnl
 
-            self.portfolio.loc[bar_index, f"{ticker} units"] = units
-            self.portfolio.loc[bar_index, f"{ticker} open_pnl"] = pnl
+            self.portfolio.loc[bar_index, f'{ticker} units'] = units
+            self.portfolio.loc[bar_index, f'{ticker} open_pnl'] = pnl
 
             if not exclude_closed:
-                self.portfolio.loc[bar_index, f"{ticker} closed_pnl"] = self.portfolio.loc[bar_index - 1, f"{ticker} closed_pnl"]
+                self.portfolio.loc[bar_index, f'{ticker} closed_pnl'] = self.portfolio.loc[bar_index - 1, f'{ticker} closed_pnl']
 
             total_open_pnl += pnl
-            total_closed_pnl += self.portfolio.loc[bar_index, f"{ticker} closed_pnl"]
+            total_closed_pnl += self.portfolio.loc[bar_index, f'{ticker} closed_pnl']
 
         # Update General Portfolio Stats
-        self.portfolio.loc[bar_index, "balance"] = self.CAPITAL + total_closed_pnl
-        self.portfolio.loc[bar_index, "equity"] = self.portfolio.loc[bar_index, "balance"] + total_open_pnl
-        self.portfolio.loc[bar_index, "open_pnl"] = total_open_pnl # Total Unrealized PnL
+        self.portfolio.loc[bar_index, 'balance'] = self.CAPITAL + total_closed_pnl
+        self.portfolio.loc[bar_index, 'equity'] = self.portfolio.loc[bar_index, 'balance'] + total_open_pnl
+        self.portfolio.loc[bar_index, 'open_pnl'] = total_open_pnl # Total Unrealized PnL
 
 
     def compute_orders(self, bars : dict[Bar]):
@@ -429,7 +429,7 @@ class Engine:
             if self.count_active_trades(order.ticker) < self.PYRAMIDING:                                
                 
                 # Insufficient Balance for the Trade
-                if (self.portfolio.loc[bar.index, "balance"] < (order.size * fill_price)):
+                if (self.portfolio.loc[bar.index, 'balance'] < (order.size * fill_price)):
 
                     # Resize the order, if it is a Market Order
                     if order.exectype == exectypes.Market:
@@ -442,7 +442,7 @@ class Engine:
                         # Add the order to rejected orders
                         return self._cancel_order(order, f'Insufficient margin/balance for this position. {order.size * fill_price})')
                 
-                if (self.portfolio.loc[bar.index, "balance"] >= (order.size * fill_price)):
+                if (self.portfolio.loc[bar.index, 'balance'] >= (order.size * fill_price)):
                     # Add order to filled orders
                     self._fill_order(order)
 
@@ -453,7 +453,7 @@ class Engine:
                     return True
 
             else:
-                return self._cancel_order(order, f"Maximum Open Trades reached. Order {order.id} has been skipped.")
+                return self._cancel_order(order, f'Maximum Open Trades reached. Order {order.id} has been skipped.')
             
 
     def _accept_order(self, order:Order | List[Order]):
@@ -472,7 +472,7 @@ class Engine:
             # self.orders.insert(index, order)
             self.orders.append(order)
 
-            # logging.info(f"Order {order.id} Accepted Successfully.")
+            # logging.info(f'Order {order.id} Accepted Successfully.')
 
 
     def _expire_order(self, order:Order | List[Order]):   
@@ -490,8 +490,8 @@ class Engine:
             order.cancel()
 
             # Add the order to orders history
-            self.history["orders"].append(order)
-            # logging.info(f"Order {order.id} Expired.")
+            self.history['orders'].append(order)
+            # logging.info(f'Order {order.id} Expired.')
 
 
     def _cancel_order(self, order:Order | List[Order], message:str=None):   
@@ -510,8 +510,8 @@ class Engine:
 
             # Add the order to orders history
             message = f'\nReason : {message}' if message else ''
-            self.history["orders"].append(order)
-            # logging.info(f"Order {order.id} Cancelled." + message)
+            self.history['orders'].append(order)
+            # logging.info(f'Order {order.id} Cancelled.' + message)
 
 
     def _fill_order(self, order:Order | List[Order]):
@@ -529,8 +529,8 @@ class Engine:
             order.fill()
 
             # Add the order to orders history
-            self.history["orders"].append(order)
-            # logging.info(f"Order {order.id} Filled Successfully.")
+            self.history['orders'].append(order)
+            # logging.info(f'Order {order.id} Filled Successfully.')
 
 
     def _reject_order(self, order:Order | List[Order], message:str=None):
@@ -546,8 +546,8 @@ class Engine:
 
             # Add the order to orders history
             message = f'\nReason : {message}' if message else ''
-            self.history["orders"].append(order)
-            # logging.info(f"Order {order.id} Rejected." + message)
+            self.history['orders'].append(order)
+            # logging.info(f'Order {order.id} Rejected.' + message)
 
     
     def _recalculate_market_order_size(self, order:Order, bar:Bar, fill_price:float):
@@ -559,7 +559,7 @@ class Engine:
         weight = self.tickers_weight[order.ticker]
 
         # Calculate the risk in cash
-        risk_amount = self.portfolio.loc[bar.index, "balance"] * weight
+        risk_amount = self.portfolio.loc[bar.index, 'balance'] * weight
 
         return order.direction.value * (risk_amount / fill_price)
 
@@ -596,15 +596,15 @@ class Engine:
         trade.params.max_drawdown_perc = (trade.params.max_drawdown / (trade.entry_price * trade.size)) * 100 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
 
         trade.params.pnl = pnl
-        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.loc[bar.index, "balance"]) * 100
+        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.loc[bar.index, 'balance']) * 100
 
         return pnl    
 
 
     def _execute_trade(self, order:Order, bar:Bar):
-        """
+        '''
         Generates Trade Objects from Order Object
-        """
+        '''
         self.trade_id += 1
         new_trade = None
         _, fill_price = order.filled(bar)
@@ -634,24 +634,24 @@ class Engine:
                 order_above = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
-                          **order.children_orders["exit_profit"])
+                          **order.children_orders['exit_profit'])
                 # Exit Loss Order
                 order_below = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
-                          **order.children_orders["exit_loss"])
+                          **order.children_orders['exit_loss'])
             
             else:
                 # Exit Profit Order
                 order_below = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
-                          **order.children_orders["exit_profit"])
+                          **order.children_orders['exit_profit'])
                 # Exit Loss Order
                 order_above = self.buy(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
-                          **order.children_orders["exit_loss"])
+                          **order.children_orders['exit_loss'])
 
             # Execute the parent order
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
@@ -666,8 +666,8 @@ class Engine:
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
 
-        logging.info(f"\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-        logging.info(f"Trade {new_trade.id} Executed. (Entry Price : {order.price})")
+        logging.info(f'\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+        logging.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})')
         logging.info(f'{self.portfolio.loc[bar.index]}')
 
         # If there are children orders:
@@ -688,7 +688,7 @@ class Engine:
         trade.close(bar, price)
 
         # Update Portfolio Balance
-        self.portfolio.loc[bar.index, "balance"] += trade.params.pnl
+        self.portfolio.loc[bar.index, 'balance'] += trade.params.pnl
 
         # Mark the trade as closed
         trade.Status = Trade.Status.Closed
@@ -697,17 +697,17 @@ class Engine:
         self.trades[bar.ticker].pop(trade.id)
 
         # Add trade trade history
-        self.history["trades"].append(trade)
+        self.history['trades'].append(trade)
 
         # Update Portfolio Value for that ticker with Exit Price, Then Reduce Them
-        self.portfolio.loc[bar.index, f"{bar.ticker} closed_pnl"] += trade.params.pnl 
+        self.portfolio.loc[bar.index, f'{bar.ticker} closed_pnl'] += trade.params.pnl 
         self.compute_portfolio_stats(bar.index, exclude_closed=True)
         
         # For debugging purposes
         self.trade_count += 1
-        logging.info(f"TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))")
+        logging.info(f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))')
         logging.info(f'{self.portfolio.loc[bar.index]}')
-        logging.info(f"\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+        logging.info(f'\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
     
     def count_active_trades(self, ticker:str=None):  
@@ -733,12 +733,12 @@ class Engine:
         x_values = np.arange(len(array))
 
         # Plot the values
-        plt.plot(x_values, array, label="Equity Curve")
+        plt.plot(x_values, array, label='Equity Curve')
 
         # Add labels and title
-        plt.xlabel("Time")
-        plt.ylabel("Equity Value")
-        plt.title("Equity Curve Plot")
+        plt.xlabel('Time')
+        plt.ylabel('Equity Value')
+        plt.title('Equity Curve Plot')
 
         # Add a legend
         plt.legend()
@@ -748,12 +748,12 @@ class Engine:
     
 
     def plot_results(self, data_dict):
-        """
+        '''
         Plot results from a dictionary of NumPy arrays.
 
         Parameters:
         - data_dict (dict): A dictionary where keys are plot titles and values are NumPy arrays.
-        """
+        '''
 
         # Create a new plot
         plt.figure()
@@ -780,12 +780,13 @@ class Engine:
         '''
 
         # Compute the Trades History
-        report_trades = self.compute_trades_report()
+        report_trades, _ = self.compute_trades_report()
+
+
         report_trades = self._process_trade_history(report_trades)
 
         # Compute the metrics
         report_metrics = self.compute_metrics_report(report_trades)
-
 
         return report_trades, report_metrics
     
@@ -816,59 +817,75 @@ class Engine:
         return max_runup.max(), max_runup_percent.max()
 
 
-    def report_buy_and_hold_return(self, data : pd.DataFrame):
-
-        entry_price = data.loc[data.index[0], 'entry_price']
-        exit_price = data.loc[data.index[-1], 'exit_price']
-
-        ret = ((exit_price - entry_price) / entry_price)
-
-        return self.CAPITAL * ret , ret
-
-
     def compute_trades_report(self):
-        trades_list = []
-        history = self.history["trades"]
+        """
+        Compute and return a trades report including all trades and trades per ticker.
 
+        Returns:
+        - all_trades (pd.DataFrame): DataFrame containing properties of all trades.
+        - trades_per_ticker (dict): Dictionary with tickers as keys and trade DataFrames as values.
+        """
+        # Initialize an empty list to store trade properties for all trades
+        trades_list = []
+
+        # Extract the 'trades' history from the object
+        history = self.history['trades']
+
+        # Iterate through each trade in the history
         for index in range(len(history)):
-            trade :Trade = history[index]
+            # Access the trade object
+            trade: Trade = history[index]
+
+            # Extract relevant properties from the trade
             properties = {
-                'id' : trade.id,
-                'direction' : trade.direction.value,
-                'ticker' : trade.ticker,
-                'entry_timestamp' : trade.entry_timestamp.tz_localize(None),
-                'exit_timestamp' : trade.exit_timestamp.tz_localize(None),
-                'entry_price' : trade.entry_price,
-                'exit_price' : trade.exit_price,
-                'size' : trade.size,
-                'profit' : trade.params.pnl,
-                'profit_percent' : trade.params.pnl_perc,
-                'max_runup' : trade.params.max_runup,
-                'max_runup_percent' : trade.params.max_runup_perc,
-                'max_drawdown' : trade.params.max_drawdown,
-                'max_drawdown_percent' : trade.params.max_drawdown_perc,
+                'id': trade.id,
+                'direction': trade.direction.value,
+                'ticker': trade.ticker,
+                'entry_timestamp': trade.entry_timestamp.tz_localize(None),
+                'exit_timestamp': trade.exit_timestamp.tz_localize(None),
+                'entry_price': trade.entry_price,
+                'exit_price': trade.exit_price,
+                'size': trade.size,
+                'profit': trade.params.pnl,
+                'profit_percent': trade.params.pnl_perc,
+                'max_runup': trade.params.max_runup,
+                'max_runup_percent': trade.params.max_runup_perc,
+                'max_drawdown': trade.params.max_drawdown,
+                'max_drawdown_percent': trade.params.max_drawdown_perc,
             }
 
+            # Append the trade properties to the list
             trades_list.append(properties)
-            trades = pd.DataFrame(trades_list)
-            trades = trades.astype({
-                'id': int,
-                'direction': int,
-                'ticker': str,
-                'entry_timestamp': 'datetime64[ns]',
-                'exit_timestamp': 'datetime64[ns]',
-                'entry_price': float,
-                'exit_price': float,
-                'size': float,
-                'profit': float,
-                'profit_percent': float,
-                'max_runup': float,
-                'max_runup_percent': float,
-                'max_drawdown': float,
-                'max_drawdown_percent': float
-            })
-        
-        return trades
+
+        # Compile all trade properties into a Pandas DataFrame
+        all_trades = pd.DataFrame(trades_list)
+
+        # Convert data types of DataFrame columns for consistency
+        all_trades = all_trades.astype({
+            'id': int,
+            'direction': int,
+            'ticker': str,
+            'entry_timestamp': 'datetime64[ns]',
+            'exit_timestamp': 'datetime64[ns]',
+            'entry_price': float,
+            'exit_price': float,
+            'size': float,
+            'profit': float,
+            'profit_percent': float,
+            'max_runup': float,
+            'max_runup_percent': float,
+            'max_drawdown': float,
+            'max_drawdown_percent': float
+        })
+
+        # Create a list of traded tickers
+        traded_tickers = all_trades['ticker'].unique().tolist()
+
+        # Create a dictionary of DataFrames, where each key is a ticker and the value is a DataFrame of trades for that ticker
+        trades_per_ticker = {ticker: all_trades[all_trades['ticker'] == ticker] for ticker in traded_tickers}
+
+        # Return the overall trades DataFrame and the dictionary of trades per ticker
+        return all_trades, trades_per_ticker
 
 
     def compute_metrics_report(self, trades_report:pd.DataFrame):
@@ -893,7 +910,6 @@ class Engine:
         largest_loss_percent = trades[(trades['profit_percent'] < 0)]['profit_percent'].min() # Largest Losing Trade
         max_runup, max_runup_percent = self.report_max_runup(trades) # Max Run-up
         max_drawdown, max_drawdown_percent = self.report_max_drawdown(trades) # Max Drawdown
-        buy_hold_return, buy_hold_return_percent = self.report_buy_and_hold_return(trades) # Buy & Hold Return %
 
         profit_factor = gross_profit / abs(gross_loss) # Profit Factor
         total_closed_trades = len(trades) # Total Closed Trades
@@ -905,8 +921,7 @@ class Engine:
         average_duration = trades['duration'].mean().total_seconds() # Avg Duration in Trades
         average_duration_winning = trades[(trades['profit'] > 0)]['duration'].mean().total_seconds() # Avg Duration in Winning Trades
         average_duration_losing = trades[(trades['profit'] < 0)]['duration'].mean().total_seconds()  # Avg Duration in Losing history
-        
-                
+          
         # Create a dictionary for each set of metrics
         metrics_data = {
             # NET PROFIT
@@ -934,8 +949,6 @@ class Engine:
             'max_runup_percent': [max_runup_percent],
             'max_drawdown': [max_drawdown],
             'max_drawdown_percent': [max_drawdown_percent],
-            'buy_hold_return': [buy_hold_return],
-            'buy_hold_return_percent': [buy_hold_return_percent],
             'profit_factor': [profit_factor],
             'total_closed_trades': [total_closed_trades],
             'count_profit': [count_profit],
@@ -970,8 +983,6 @@ class Engine:
             'largest_loss_percent': float,
             'max_runup': float,
             'max_drawdown': float,
-            'buy_hold_return': float,
-            'buy_hold_return_percent': float,
             'profit_factor': float,
             'total_closed_trades': int,
             'count_profit': int,
@@ -1004,22 +1015,22 @@ class Engine:
 
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     import yfinance as yf
-    start_date = "2020-01-02"
-    end_date = "2023-12-31"
+    start_date = '2020-01-02'
+    end_date = '2023-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL', "GOOG", 'TSLA']
-    ticker_path = [f"data/prices/{ticker}.csv" for ticker in tickers]
+    tickers = ['AAPL', 'GOOG', 'TSLA']
+    ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
 
     for ticker in tickers:
-        file_name = f"data/prices/{ticker}.csv"
+        file_name = f'data/prices/{ticker}.csv'
 
         if os.path.exists(file_name):
             df = pd.read_csv(file_name, index_col='Date', parse_dates=True)
@@ -1031,5 +1042,5 @@ if __name__ == "__main__":
 
     dataframes = dict(zip(tickers, dfs))
 
-    alpha = Engine(tickers, dataframes, "1d", start_date, end_date)
+    alpha = Engine(tickers, dataframes, '1d', start_date, end_date)
     alpha.run_backtest()
