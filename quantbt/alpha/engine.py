@@ -8,13 +8,12 @@ import numpy as np
 import pandas as pd
 import pytz
 from dateutil.parser import parse
-from quantbt.alpha.orders import Order
-from quantbt.alpha.trades import Trade
-from quantbt.alpha.utils import Bar  # noqa: F401
-from quantbt.alpha.utils import clear_terminal, debug, sorted_index  # noqa: F401
+from orders import Order
+from trades import Trade
+from utils import Bar  # noqa: F401
+from utils import clear_terminal, debug, sorted_index  # noqa: F401
 
 logging.basicConfig(filename="logs.log", level=logging.INFO)
-
 
 exectypes = Order.ExecType
 

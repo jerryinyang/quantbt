@@ -283,3 +283,5 @@ class Order:
         ChildReduce = "ChildReduce"
 
 
+def test():
+    print('FINALLY!')
