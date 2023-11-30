@@ -1,5 +1,5 @@
 from datetime import datetime  # , timedelta
-# import logging
+import logging
 import os
 # import math
 from bisect import bisect_left, bisect_right
@@ -78,120 +78,99 @@ class Bar:
         """
         return self.high >= price >= self.low
 
-# class Log:
-#     filename = "debug.log"
 
-#     def __init__(self) -> None:
-#         self.log_debug = logging.getLogger("debug")  # For Debug, Info
-#         self.log_error = logging.getLogger("warning")  # For Warning, Error, Critical
-
-#         self.log_debug.setLevel(logging.DEBUG)
-#         self.log_error.setLevel(logging.WARNING)
-
-#         self.format_info = logging.Formatter(
-#             " [%(asctime)s] %(levelname)s --> %(message)s"
-#         )
-#         self.format_error = logging.Formatter(
-#             " ***** %(levelname)s ***** \n[ %(pathname)s:%(lineno)d:%(funcName)s ]\nMESSAGE:\n%(message)s"
-#         )
-
-#         self.file_debug = logging.FileHandler("logs.log").setFormatter(self.format_info)
-#         self.file_error = logging.FileHandler("logs.log").setFormatter(
-#             self.format_error
-#         )
-
-#         self.log_debug.addHandler(self.file_debug)
-#         self.log_error.addHandler(self.file_error)
-
-#     def debug(self, message):
-#         self.log_debug.info(message)
-
-#     def info(self, message):
-#         self.log_debug.info(message)
-
-#     def warning(self, message):
-#         self.log_error.warning(message)
-
-#     def error(self, message):
-#         self.log_error.error(message)
-
-#     def critical(self, message):
-#         self.log_error.critical(message)
+class LogFormatter(logging.Formatter):
+    def format(self, record):
+        level = record.levelname
+        if level in ['DEBUG', 'INFO']:
+            self._style._fmt = '%(asctime)s [ %(levelname)s ] - %(message)s'
+        elif level in ['WARNING', 'ERROR']:
+            self._style._fmt = '%(asctime)s - [ %(levelname)s ] - %(message)s - %(pathname)s:%(lineno)d'
+        return super().format(record)
 
 
-# class Resolution:
+class Logger(logging.Logger):
+    FORMAT = {
+        'DEBUG': '%(asctime)s [ %(levelname)s ] - %(message)s',
+        'INFO': '%(asctime)s [ %(levelname)s ] - %(message)s',
+        'WARNING': '%(asctime)s - [ %(levelname)s ] - %(message)s - %(pathname)s:%(lineno)d',
+        'ERROR': '%(asctime)s - [ %(levelname)s ] - %(message)s - %(pathname)s:%(lineno)d',
+    }
 
-#     def __init__(self, timestr) -> None:
-#        print(self.breakdown(timestr))
+    def __init__(self, name=__name__, level=logging.NOTSET):
+        super().__init__(name, level)
 
-#     def parse(self, time_str):
-#         # Define the mapping of units to their corresponding multipliers in seconds
-#         time_units = {
-#             'm': 60,
-#             'min': 60,
-#             'h': 3600,
-#             'H': 3600,
-#             'd': 86400,
-#             'D': 86400,
-#             'w': 604800,
-#             'W': 604800,
-#             'M': 2592000
-#             }
+        # Create and set the handler with the custom formatter
+        custom_handler = logging.StreamHandler()
+        custom_handler.setLevel(logging.DEBUG)  # Set the level to the lowest level you want to capture
+        custom_handler.setFormatter(LogFormatter())
 
-#         # Use regular expression to extract the number and unit from the input string
-#         match = re.match(r'(\d+)([a-zA-Z]+)', time_str)
-
-#         if match:
-#             amount = int(match.group(1))
-#             unit = match.group(2) if match.group(2) is not None else 'm'  # Default to minutes if unit is not provided
-
-#             # Convert the time to seconds using the unit multiplier
-#             seconds = amount * time_units.get(unit, 60)
-
-#             # Return a timedelta object
-#             return timedelta(seconds=seconds)
-
-#         else:
-#             raise ValueError("Invalid time string format")
+        # Add the handler to the logger
+        self.addHandler(custom_handler)
 
 
-#     def breakdown(self, time_str):
-#         self.parse(time_str)
+class ObservableList(list):
+    def __init__(self, callback, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._callback = self._set_callback(callback)
 
-#         multiples = [x/timedelta(minutes=1) for x in Resolution.Interval.__members__.values()]
+    def _set_callback(self, callback):
+        assert callback, ValueError('Callback Function cannot be reset to None.')
+        return callback
 
-#         return multiples
+    def append(self, value):
+        self._on_update(value)
+        super().append(value)
+
+    def extend(self, values):
+        self._on_update(values)
+        super().extend(values)
+
+    def __setitem__(self, index, value):
+        self._on_update(value)
+        super().__setitem__(index, value)
+
+    def remove(self, value):
+        self._on_update(value)
+        super().remove(value)
+
+    def pop(self, index=-1):
+        result = super().pop(index)
+        self._on_update(result)
+        return result
+
+    def insert(self, index, value):
+        self._on_update(value)
+        super().insert(index, value)
+
+    # To be called when olist is updated
+    def _on_update(self, changed_object):
+        if self._callback:
+            self._callback(changed_object)
 
 
-#     class Interval(Enum):
-#         MINUTES_1 = (timedelta(minutes=1), '1m')
-#         MINUTES_3 = (timedelta(minutes=3), '3m')
-#         MINUTES_5 = (timedelta(minutes=5), '5m')
-#         MINUTES_15 = (timedelta(minutes=15), '15m')
-#         MINUTES_30 = (timedelta(minutes=30), '30m')
-#         HOURS_1 = (timedelta(hours=1), '1h')
-#         HOURS_2 = (timedelta(hours=2), '2h')
-#         HOURS_4 = (timedelta(hours=4), '4h')
-#         DAY_1 = (timedelta(days=1), '1d')
-#         WEEK_1 = (timedelta(weeks=1), '1w')
-#         MONTH_1 = (timedelta(days=30), '1M')
+class ObservableDict(dict):
+    def __init__(self, callback, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._callback = self._set_callback(callback)
 
-#         # def __getattribute__(self) -> str:
-#         #     return [self.value[0], self.value[1]]
+    def _set_callback(self, callback):
+        assert callback, ValueError('Callback Function cannot be reset to None.')
+        return callback
 
-#         def __getattribute__(self, name: str) -> Any:
-#             return super().__getattribute__(name)[0]
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self._on_update(value)
 
+    def __delitem__(self, key):
+        value = self[key]
+        super().__delitem__(key)
+        self._on_update(value)
 
-# Iterate through all attributes
-# for attribute, value in vars(Resolution.Interval).items():
-#     print(f'{attribute}: {value}')
-
-# for value in Resolution.Interval.__members__.values():
-#     print(value)
-
-
-
+    # To be called when olist is updated
+    def _on_update(self, changed_object):
+        if self._callback:
+            self._callback(changed_object)
 
 
 
@@ -241,12 +220,10 @@ def sorted_index(array, value):
     
     # Return the right index to keep the array sorted
     return bisect_right(array, value)
-    
-    
 
 
-
-
+def test(test):
+    print(f'Yepp : {test}')
 
     
     
