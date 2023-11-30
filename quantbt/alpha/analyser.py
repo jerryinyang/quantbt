@@ -1,33 +1,33 @@
 import pandas as pd
 import numpy as np # noqa: F401
 import matplotlib.pyplot as plt # noqa: F401
+import concurrent.futures # noqa: F401
+from typing import Dict, List # noqa: F401
 
-from typing import List, Dict
+from backtester import Backtester
 
-from quantbt.alpha.reporters import Reporter # noqa: F401
-from engine import Engine
 
 
 class Analyser:
-    def __init__(self) -> None:
+    def __init__(self, backtester:Backtester) -> None:
         '''
         This class embodies the analyst performing series of backtests.
         '''
+        self.backtester = backtester
 
-        self.engine : Engine = None 
+    def analyse_robustness_price(self, iterations:int):
+        '''
+        For this analysis, synthetic OHLCV data is created by modifying the actual backtest data. 
+        Then, the backtest is run `n` times, and the performance metrics are recalculated and compared.
+        '''
 
+    
+    def synthetic_price_permute(self, data:pd.DataFrame):
+        assert 'close' in data.columns, ValueError("Missing required `close` column in dataframe.")
+        
+        data['price_change'] = None
+        
 
-    def add_engine(self, tickers:List[str], dataframes:Dict[str,pd.DataFrame], resolution:str, start_date, end_date):
-        # Assert datatypes for each arguments
-        assert tickers, ValueError('`tickers` list cannot be empty.')
-        assert dataframes, ValueError('`dataframes` dictionary cannot be None.')
-        assert resolution, ValueError('`resolution` cannot be set to None.')
-        assert start_date, ValueError('`start_date` cannot be set to None.')
-        assert end_date, ValueError('`end_date` cannot be set to None.')
-
-        assert isinstance(tickers, list), ValueError('`tickers` must be passed in a list.')
-        assert isinstance(dataframes, dict), ValueError('`dataframes` must be passed in a dictionary.')
-        assert isinstance(resolution, str), ValueError('`resolution` must be a string.')
-
-        assert (len(dataframes) == len(tickers)) and (set(dataframes.keys()) == set(tickers)), \
-            ValueError('Tickers in `tickers` and `dataframes` must match.')
+    def synthetic_price_noise(self, data:pd.DataFrame):
+        pass
+    
