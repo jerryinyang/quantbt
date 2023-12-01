@@ -88,6 +88,10 @@ class Engine:
             'trades' : []
         }
 
+        # This would contain informations about sizing for each asset
+        # Equal weighting : All assets take the same share of the assets
+        self.tickers_weight = {ticker : 1 / len(self.tickers)  for ticker in self.tickers}
+
 
     def init_portfolio(self, date_range:pd.DatetimeIndex):
         # Initialize Portfolio Dataframe: this would contain all the portfolio attributes
@@ -116,95 +120,6 @@ class Engine:
         non_eligible_assets = list(set(self.tickers) - set(eligible_assets))
 
         return eligible_assets, non_eligible_assets
-
-
-    # def run_backtest(self):
-    #     print('Initiating Backtest')
-
-    #     # Set Backtest Range
-    #     self.portfolio= self.init_portfolio(self.date_range)
-        
-    #     # Iterate through each bar/index (timestamp) in the backtest range
-    #     for bar_index in self.portfolio.index:
-    #         date = self.portfolio.loc[bar_index, 'timestamp']
-
-    #         # Create the bar objects for easier access to data
-    #         bars = {}
-    #         for ticker in self.tickers:
-
-    #             bar = Bar(
-    #                 open=self.dataframes[ticker].loc[date, 'open'],
-    #                 high=self.dataframes[ticker].loc[date, 'high'],
-    #                 low=self.dataframes[ticker].loc[date, 'low'],
-    #                 close=self.dataframes[ticker].loc[date, 'close'],
-    #                 volume=self.dataframes[ticker].loc[date, 'volume'],
-    #                 index=bar_index,
-    #                 timestamp=date,
-    #                 resolution=self.resolution,
-    #                 ticker=ticker
-    #             )
-    #             bars[ticker] = bar
-
-    #         # If Date is not the first date
-    #         if bar_index > 0:
-    #             # Update Portfolio
-    #             self.compute_portfolio_stats(bar_index)
-
-    #             # Process Orders
-    #             self.compute_orders(bars)
-
-    #             # Process Active Trades
-    #             self.compute_trades_stats(bars)
-            
-    #         # Filter Universe for Assets Eligible for Trading in a specific date
-    #         eligible_assets, non_eligible_assets = self.filter_eligible_assets(date)
-
-    #         # Decision-making / Signal-generating Algorithm
-    #         alpha_long, alpha_short = self.signal_generator(eligible_assets)
-            
-    #         non_eligible_assets = list(set(non_eligible_assets).union((set(eligible_assets) - set(alpha_long + alpha_short)))  )
-    #         eligible_assets = list(set(alpha_long + alpha_short))
-
-    #         # Executing Signals
-    #         for ticker in non_eligible_assets:
-    #             # Units of asset in holding (Set to zero)
-    #             self.portfolio.loc[bar_index, f'{ticker} units'] = 0
-    #             self.portfolio.loc[bar_index, f'{ticker} open_pnl'] = 0
-            
-    #         for ticker in eligible_assets:
-
-    #             # Calculate Allocation for Each Symbols (Equal Allocation)
-    #             risk_dollars = self.portfolio.loc[bar_index, 'balance'] * self.tickers_weight[ticker] 
-
-    #             # Tickers to Long
-    #             if ticker in alpha_long:
-    #                 entry_price = bars[ticker].close
-
-    #                 position_size = risk_dollars / entry_price
-
-    #                 exit_tp = entry_price * 1.1
-    #                 exit_sl = entry_price * 0.95
-                    
-    #                 # Create and Send Long Order
-    #                 self.buy(bars[ticker], entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
-
-    #              # Tickers to Short
-    #             elif ticker in alpha_short:
-    #                 entry_price = bars[ticker].close
-    #                 position_size = -1 * risk_dollars / entry_price
-
-    #                 exit_tp = entry_price * 0.9
-    #                 exit_sl = entry_price * 1.05
-                    
-    #                 # Create and Send Short Order
-    #                 self.sell(bars[ticker], entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
-
-    #         # logging.info(f'{self.portfolio.loc[bar.index]}')
-    
-    #     print('Backtest Complete')
-
-    #     return self.history['trades']
-
 
 
     def buy(self, bar, price, size:float, exectype:Order.ExecType, 
@@ -478,8 +393,8 @@ class Engine:
                 self.history['orders'].append(order)
                 # logging.info(f'Order {order.id} Cancelled.' + message)
 
-            else:
-                raise ValueError(f"Order {order.id} is not found in the orders list.")
+            # else:
+                # raise ValueError(f"Order {order.id} is not found in the orders list.")
 
 
     def _fill_order(self, order:Order | List[Order]):
@@ -628,6 +543,7 @@ class Engine:
                           expiry_date=None,
                           **order.children_orders['exit_loss'])
 
+
             # Execute the parent order
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
         
@@ -647,6 +563,9 @@ class Engine:
 
         # If there are children orders:
         if order.children_orders:
+
+            if not (order_above and order_below):
+                debug('What the fuck is happening')
             # Check if Children Orders would be filled in that bar
             if bar.open <= bar.close:
                 # For Green Bars, check the order above if it is filled on the same bar
@@ -814,11 +733,9 @@ class BaseAlpha(Alpha):
     def __init__(self, engine: Engine, capital_allocation: float, profit_perc:float, loss_perc:float) -> None:
         super().__init__(engine, capital_allocation)
 
-        # This would contain informations about sizing for each asset
-        # Equal weighting : All assets take the same share of the assets
-        self.tickers_weight = {ticker : 1 / len(self.engine.tickers)  for ticker in self.engine.tickers}
         self.profit_perc = profit_perc
         self.loss_perc = loss_perc
+
 
     def next(self, eligibles:List[str], datas: Dict[str, Bar]):
 
@@ -879,6 +796,6 @@ class BaseAlpha(Alpha):
 
     def sizer(self, bar:Bar):
         # Get current balance for that ticker, scaled to the strategy's allocation percent
-        return self.engine.portfolio.loc[bar.index, 'balance'] * self.tickers_weight[bar.ticker] * self.allocation
+        return self.engine.portfolio.loc[bar.index, 'balance'] * self.engine.tickers_weight[bar.ticker] * self.allocation
 
         

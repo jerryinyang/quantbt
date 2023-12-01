@@ -1,14 +1,11 @@
 import logging
 from typing import List
-import os
-import pandas as pd
 
 
-from engine import Engine, Alpha, BaseAlpha
+from engine import Engine, Alpha
 from orders import Order
 from utils import Bar, ObservableList as olist, ObservableDict as odict  # noqa: F401
-from utils import clear_terminal, debug, sorted_index  # noqa: F401
-from quantbt.alpha.reporters import Reporter
+
 
 
 logging.basicConfig(filename='logs.log', level=logging.INFO)
@@ -85,47 +82,3 @@ class Backtester:
             
         print('Backtest Complete')
         return self.engine.history['trades']
-
-
-if __name__ == '__main__':
-    import yfinance as yf
-    start_date = '2020-01-02'
-    end_date = '2023-12-31'
-
-    clear_terminal()
-    with open('logs.log', 'w'):
-        pass
-
-    tickers = ['AAPL', 'GOOG', 'TSLA']
-    ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
-
-    dfs = []
-
-    for ticker in tickers:
-        file_name = f'data/prices/{ticker}.csv'
-
-        if os.path.exists(file_name):
-            df = pd.read_csv(file_name, index_col='Date', parse_dates=True)
-        else:
-            df = yf.download(ticker, start=start_date, end=end_date)
-            df.to_csv(file_name)
-            
-        dfs.append(df)
-
-    dataframes = dict(zip(tickers, dfs))
-
-    engine = Engine(tickers, dataframes, '1d', start_date, end_date)
-    # alpha = BaseAlpha(engine, 1, .1, .03)
-    alpha2 = BaseAlpha(engine, 1, .05, .2)
-
-    backtester = Backtester(engine)
-    # backtester.add_alpha(alpha)
-    backtester.add_alpha(alpha2)
-    trade_history = backtester.backtest()
-
-    # Use Reported
-    reporter = Reporter(trade_history)
-
-    metric :pd.DataFrame = reporter.report()['full'][1]
-
-    metric.to_csv('data/test.csv', index=True)
