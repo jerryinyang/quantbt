@@ -1,10 +1,10 @@
 import logging
 from typing import List
 
-
 from engine import Engine, Alpha
 from orders import Order
-from utils import Bar, ObservableList as olist, ObservableDict as odict  # noqa: F401
+from utils import Bar, debug # noqa: F401
+from copy import deepcopy
 
 
 
@@ -13,13 +13,38 @@ logging.basicConfig(filename='logs.log', level=logging.INFO)
 exectypes = Order.ExecType
 
 class Backtester:
+    _original_dfs : Engine= None
 
-    def __init__(self, engine:Engine) -> None:
+    def __init__(self, engine:Engine, alphas:list[Alpha], in_analyzer:bool=False) -> None:
         self.engine = engine
-        self.alphas : List[Alpha] = []
+        self.alphas : List[Alpha] = self._init_alpha(alphas)
+
+        # If Backtester is being initialized within and Analyzer, don't modify the initial_engine
+        if not in_analyzer:
+            self._original_dfs = deepcopy(engine.dataframes)
+
+    @property
+    def original_dataframes(self):
+        return self._original_dfs
+    
+    @original_dataframes.setter
+    def original_dataframes(self, dataframes):
+        self._original_dfs = dataframes
 
 
+    def _init_alpha(self, alphas: list[Alpha]):
+        if isinstance(alphas, list):
+            for alpha in alphas:
+                alpha.reset_alpha(self.engine)
+            return alphas
+
+        else:
+            alphas.reset_alpha(self.engine)
+            return [alphas]
+        
+    
     def add_alpha(self, alpha:Alpha):
+        alpha = self._init_alpha(self.engine)
         self.alphas.append(alpha)
 
 
@@ -80,5 +105,16 @@ class Backtester:
                     self.engine.portfolio.loc[bar_index, f'{ticker} units'] += 0
                     self.engine.portfolio.loc[bar_index, f'{ticker} open_pnl'] += 0
             
-        print('Backtest Complete')
+        print(f"Backtest Complete. Final Equity : {self.engine.portfolio.iloc[-1, self.engine.portfolio.columns.get_loc('balance')]}")
         return self.engine.history['trades']
+
+
+    def reset_backtester(self, dataframes:dict):
+        '''
+        Resets the backtester for another run. Resets the engine with new data.
+        '''
+        # Reset Engines
+        self.engine.reset_engine(dataframes)
+
+        # Reset Backtester; Reset Alphas with new engine
+        self.__init__(self.engine, self.alphas, True)

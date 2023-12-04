@@ -73,6 +73,9 @@ class Engine:
     def __init__(self, tickers:list[str], dataframes:dict[str,pd.DataFrame], resolution:str, start_date, end_date) -> None:
         self.resolution = resolution
         self.tickers = tickers
+        self.start_date = start_date
+        self.end_date = end_date
+        
         self.date_range = pd.date_range(start=parse(start_date, ignoretz=True), 
                                         end=parse(end_date, ignoretz=True), 
                                         freq=self.resolution, tz=self.TZ)
@@ -91,6 +94,20 @@ class Engine:
         # This would contain informations about sizing for each asset
         # Equal weighting : All assets take the same share of the assets
         self.tickers_weight = {ticker : 1 / len(self.tickers)  for ticker in self.tickers}
+
+        # Save the Initial State
+        self.initial_state = self
+        
+
+    def reset_engine(self, dataframes:dict[str,pd.DataFrame]):
+        # Reset to the initial state by copying attributes from initial_state
+        self.__init__(
+            tickers=self.tickers,
+            dataframes=dataframes,
+            resolution=self.resolution,
+            start_date=self.start_date,
+            end_date=self.end_date
+        )
 
 
     def init_portfolio(self, date_range:pd.DatetimeIndex):
@@ -728,6 +745,15 @@ class Alpha(ABC):
             for trade in trades:
                 self.close_trade(trade, bar, price)
             
+    @abstractmethod
+    def reset_alpha(self, engine:Engine):
+        '''
+        Reset Alpha Engine.
+        '''
+        engine = self.engine
+
+        self.__init__(engine, self.allocation)
+
 
 class BaseAlpha(Alpha):
     def __init__(self, engine: Engine, capital_allocation: float, profit_perc:float, loss_perc:float) -> None:
@@ -798,4 +824,11 @@ class BaseAlpha(Alpha):
         # Get current balance for that ticker, scaled to the strategy's allocation percent
         return self.engine.portfolio.loc[bar.index, 'balance'] * self.engine.tickers_weight[bar.ticker] * self.allocation
 
-        
+
+    def reset_alpha(self, engine:Engine):
+        '''
+        Reset Alpha Engine.
+        '''
+        engine = self.engine
+
+        self.__init__(engine, self.allocation, self.profit_perc, self.loss_perc)
