@@ -2,7 +2,7 @@ from datetime import datetime  # , timedelta
 import logging
 import os
 # import math
-from bisect import bisect_left, bisect_right
+from bisect import bisect_right
 
 # from enum import Enum
 # import re
@@ -197,14 +197,6 @@ def debug(texts):
             pass
 
         exit()
-    
-
-def binary_search(a, x):
-    i = bisect_left(a, x)
-    if i != len(a) and a[i] == x:
-        return i
-    else:
-        return -1
     
 
 def sorted_index(array, value):
