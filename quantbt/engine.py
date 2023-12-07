@@ -1,5 +1,3 @@
-import logging
-
 from bisect import bisect_left, bisect_right
 from typing import Dict, List
 
@@ -9,15 +7,17 @@ from observers import Observer
 
 from orders import Order
 from trades import Trade
-from utils import Bar, ObservableList as olist, ObservableDict as odict  # noqa: F401
+from utils import Bar, Logger
+from utils import ObservableList as olist 
+from utils import ObservableDict as odict 
 from utils import debug  # noqa: F401
-
-
-logging.basicConfig(filename='logs.log', level=logging.INFO)
 
 exectypes = Order.ExecType
 
 class Engine:
+    logger = Logger('logger_engine')
+    trade_logger = Logger('trade_event', 'log_trades.log')
+
     CAPITAL = 100000
     PYRAMIDING = 1
     PRECISION = 2
@@ -314,7 +314,7 @@ class Engine:
             # Add it to self.orders
             self.orders.append(order)
 
-            # logging.info(f'Order {order.id} Accepted Successfully.')
+            self.logger.info(f'Order {order.id} Accepted Successfully.')
 
 
     def _expire_order(self, order:Order | List[Order]):   
@@ -331,7 +331,7 @@ class Engine:
             # Remove the order from self.orders
             self.orders.remove(order)
 
-            # logging.info(f'Order {order.id} Expired.')
+            self.logger.info(f'Order {order.id} Expired.')
 
 
     def _cancel_order(self, order:Order | List[Order], message:str=None):   
@@ -350,10 +350,10 @@ class Engine:
                 self.orders.remove(order)
 
                 message = f'\nReason : {message}' if message else ''
-                # logging.info(f'Order {order.id} Cancelled.' + message)
+                self.logger.info(f'Order {order.id} Cancelled.' + message)
 
-            # else:
-                # raise ValueError(f"Order {order.id} is not found in the orders list.")
+            else:
+                raise self.logger.warning(f"Order {order.id} is not found in the orders list. Remove operation unsuccessful", ValueError)
 
 
     def _fill_order(self, order:Order | List[Order]):
@@ -370,7 +370,7 @@ class Engine:
             # Remove the order from self.orders
             self.orders.remove(order)
 
-            # logging.info(f'Order {order.id} Filled Successfully.')
+            self.logger.info(f'Order {order.id} Filled Successfully.')
 
 
     def _reject_order(self, order:Order | List[Order], message:str=None):
@@ -385,7 +385,7 @@ class Engine:
             order.reject()
             
             message = f'\nReason : {message}' if message else ''
-            # logging.info(f'Order {order.id} Rejected.' + message)
+            self.logger.info(f'Order {order.id} Rejected.' + message)
 
     
     def _recalculate_market_order_size(self, order:Order, bar:Bar, fill_price:float):
@@ -518,9 +518,15 @@ class Engine:
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
 
-        logging.info(f'\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
-        logging.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})')
-        logging.info(f'{self.portfolio.dataframe.loc[bar.index]}')
+
+        # Add Trade Info to Logs
+        self.logger.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n')
+        trade_log = \
+            f'\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n' + \
+            f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n' + \
+            f'{self.portfolio.dataframe.loc[bar.index]}'
+        self.trade_logger.info(trade_log)
+
 
         # If there are children orders:
         if order.children_orders and order_above and order_below:
@@ -560,9 +566,15 @@ class Engine:
         
         # For debugging purposes
         self.trade_count += 1
-        logging.info(f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))')
-        logging.info(f'{self.portfolio.dataframe.loc[bar.index]}')
-        logging.info(f'\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
+
+        # Add Trade to Log
+        self.logger.info(f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))')
+
+        trade_log = \
+            f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))' + \
+            f'{self.portfolio.dataframe.loc[bar.index]}\n' + \
+            f'\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
+        self.trade_logger.info(trade_log)
 
     
     def count_active_trades(self, ticker:str=None):  

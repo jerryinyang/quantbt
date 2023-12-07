@@ -91,7 +91,7 @@ class LogFormatter(logging.Formatter):
 
 class Logger(logging.Logger):
 
-    def __init__(self, name=__name__, file_location : str = 'logs.log', level=logging.NOTSET):
+    def __init__(self, name=__name__, file_location : str = 'logs.log', level=logging.WARNING):
         super().__init__(name, level)
 
         # Create and set the handler with the custom formatter
@@ -218,11 +218,6 @@ def sorted_index(array, value):
     # Return the right index to keep the array sorted
     return bisect_right(array, value)
 
-
-def test(test):
-    print(f'Yepp : {test}')
-
-    
     
 
     

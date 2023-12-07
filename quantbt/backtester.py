@@ -130,8 +130,6 @@ class Backtester:
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} units'] += 0
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} open_pnl'] += 0
         
-        print(self.alphas[0].trades)
-        print(self.engine.trades)
         print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
         return self.engine.history
 
