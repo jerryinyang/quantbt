@@ -1,11 +1,11 @@
 import logging
-import pytz
 
 from bisect import bisect_left, bisect_right
-from typing import List
+from typing import Dict, List
 
 from dataloader import DataLoader
 from portfolio import Portfolio
+from observers import Observer
 
 from orders import Order
 from trades import Trade
@@ -18,9 +18,6 @@ logging.basicConfig(filename='logs.log', level=logging.INFO)
 exectypes = Order.ExecType
 
 class Engine:
-    TZ = pytz.timezone('UTC')
-
-    DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
     CAPITAL = 100000
     PYRAMIDING = 1
     PRECISION = 2
@@ -40,12 +37,16 @@ class Engine:
         self.tickers = dataloader.tickers
         self.dataframes = dataloader.dataframes
 
-        self.portfolio = Portfolio(dataloader)
+        self.portfolio = Portfolio(dataloader, self.CAPITAL)
 
         # Store Pending Orders
         self.orders : olist[Order] = olist(callback=self.onOrder)
-        self.observers 
 
+        self.trades : Dict[str, odict[int, Order]] = {key : odict(callback=self.onTrade) for key in self.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
+        self.history : List[Trade] = []
+
+        # Keep Observers
+        self.observers : List[Observer] = []
 
 
     # METHODS FOR COMPUTING PORTFOLIO
@@ -83,7 +84,7 @@ class Engine:
     def compute_trades_stats(self, bars : dict[Bar]) -> float:
         open_pnl = 0
         for ticker in self.tickers:
-            ticker_trades = self.portfolio.trades[ticker]
+            ticker_trades = self.trades[ticker]
             bar = bars[ticker]
 
             # Don't Update Trades when market is closed
@@ -98,6 +99,19 @@ class Engine:
 
 
     def compute_portfolio_stats(self, bar_index, exclude_closed:bool=False):
+        # If this is called on a new day
+        # Store Previous Day's Values
+        last_record_date = self.portfolio.get_record(0).date
+        previous_date = self.portfolio.dataframe.loc[bar_index, 'timestamp']
+        
+        if (not last_record_date) or (last_record_date and not (previous_date == last_record_date)):
+            self.portfolio.add_record(
+                bar_index - 1, 
+                previous_date,
+                self.portfolio.dataframe.loc[bar_index - 1, 'balance'],
+                self.portfolio.dataframe.loc[bar_index - 1, 'equity'],
+                self.portfolio.dataframe.loc[bar_index - 1, 'open_pnl']
+            )
 
         # Iterate through active trade for open_pnl and equity
         total_open_pnl, total_closed_pnl = 0, 0
@@ -105,26 +119,30 @@ class Engine:
         # Get Units and PnL Values for Each Ticker
         for ticker in self.tickers:
             # Get list of active trades
-            trades = self.portfolio.trades[ticker]
+            trades = self.trades[ticker]
 
             units, pnl = 0, 0
             for trade in trades.values():
                 units += trade.size
                 pnl += trade.params.pnl
 
-            self.portfolio.df.loc[bar_index, f'{ticker} units'] = units
-            self.portfolio.df.loc[bar_index, f'{ticker} open_pnl'] = pnl
+            self.portfolio.dataframe.loc[bar_index, f'{ticker} units'] = units
+            self.portfolio.dataframe.loc[bar_index, f'{ticker} open_pnl'] = pnl
 
             if not exclude_closed:
-                self.portfolio.df.loc[bar_index, f'{ticker} closed_pnl'] = self.portfolio.df.loc[bar_index - 1, f'{ticker} closed_pnl']
+                self.portfolio.dataframe.loc[bar_index, f'{ticker} closed_pnl'] = self.portfolio.dataframe.loc[bar_index - 1, f'{ticker} closed_pnl']
 
             total_open_pnl += pnl
-            total_closed_pnl += self.portfolio.df.loc[bar_index, f'{ticker} closed_pnl']
+            total_closed_pnl += self.portfolio.dataframe.loc[bar_index, f'{ticker} closed_pnl']
 
         # Update General Portfolio Stats
-        self.portfolio.df.loc[bar_index, 'balance'] = self.CAPITAL + total_closed_pnl
-        self.portfolio.df.loc[bar_index, 'equity'] = self.portfolio.df.loc[bar_index, 'balance'] + total_open_pnl
-        self.portfolio.df.loc[bar_index, 'open_pnl'] = total_open_pnl # Total Unrealized PnL
+        self.portfolio.dataframe.loc[bar_index, 'balance'] = self.CAPITAL + total_closed_pnl
+        self.portfolio.dataframe.loc[bar_index, 'equity'] = self.portfolio.dataframe.loc[bar_index, 'balance'] + total_open_pnl
+        self.portfolio.dataframe.loc[bar_index, 'open_pnl'] = total_open_pnl # Total Unrealized PnL
+
+
+    def add_observer(self, observer:Observer):
+        self.observers.append(observer)
 
 
 
@@ -208,7 +226,7 @@ class Engine:
 
         # If order is a child order (order.parent_id is set)
         # Check if the parent order is active, skip if not
-        if (order.parent_id is not None) and  (order.parent_id in self.portfolio.trades[order.ticker].keys()):
+        if (order.parent_id is not None) and  (order.parent_id in self.trades[order.ticker].keys()):
             # If the parent order is active, Handle Child Orders (Take loss, Stop Loss, Trailing)
             # Check if order is filled
 
@@ -217,7 +235,7 @@ class Engine:
                 order.price = fill_price
 
                 # Get the parent order, and other children orders where applicable
-                parent = self.portfolio.trades[order.ticker][order.parent_id]
+                parent = self.trades[order.ticker][order.parent_id]
 
                 # Execute The Appropriate Action For the Differnet Types of Children Orders
                 
@@ -250,7 +268,7 @@ class Engine:
             if self.count_active_trades(order.ticker) < self.PYRAMIDING:                                
                 
                 # Insufficient Balance for the Trade
-                if (self.portfolio.df.loc[bar.index, 'balance'] < (order.size * fill_price)):
+                if (self.portfolio.dataframe.loc[bar.index, 'balance'] < (order.size * fill_price)):
 
                     # Resize the order, if it is a Market Order
                     if order.exectype == exectypes.Market:
@@ -263,7 +281,7 @@ class Engine:
                         # Add the order to rejected orders
                         return self._cancel_order(order, f'Insufficient margin/balance for this position. {order.size * fill_price})')
                 
-                if (self.portfolio.df.loc[bar.index, 'balance'] >= (order.size * fill_price)):
+                if (self.portfolio.dataframe.loc[bar.index, 'balance'] >= (order.size * fill_price)):
                     # Add order to filled orders
                     self._fill_order(order)
 
@@ -368,12 +386,9 @@ class Engine:
         '''
         For market orders, the order size should be recalculated based on the fill price, to account for gaps in the market.
         '''
-        
-        # Get Ticker Weight
-        weight = self.tickers_weight[order.ticker]
 
         # Calculate the risk in cash
-        risk_amount = self.portfolio.df.loc[bar.index, 'balance'] * weight
+        risk_amount = self.portfolio.dataframe.loc[bar.index, 'balance']
 
         return order.direction.value * (risk_amount / fill_price)
 
@@ -399,7 +414,10 @@ class Engine:
         '''
         Use this method to monitor changes to self.orders
         '''
-        return order
+        
+        # Update all observers
+        for observer in self.observers:
+            observer.update(order)
 
 
 
@@ -418,7 +436,7 @@ class Engine:
         trade.params.max_drawdown_perc = (trade.params.max_drawdown / (trade.entry_price * trade.size)) * 100 # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
 
         trade.params.pnl = pnl
-        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.df.loc[bar.index, 'balance']) * 100
+        trade.params.pnl_perc = (trade.params.pnl / self.portfolio.dataframe.loc[bar.index, 'balance']) * 100
 
         return pnl    
 
@@ -483,8 +501,8 @@ class Engine:
             # Execute the Trade
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
         
-        # Add Trade to self.portfolio.trades
-        self.portfolio.trades[bar.ticker][self.trade_id] = new_trade
+        # Add Trade to self.trades
+        self.trades[bar.ticker][self.trade_id] = new_trade
         # TODO : Update observers 
 
         # Update Ticker Units in Portfolio
@@ -492,7 +510,7 @@ class Engine:
 
         logging.info(f'\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
         logging.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})')
-        logging.info(f'{self.portfolio.df.loc[bar.index]}')
+        logging.info(f'{self.portfolio.dataframe.loc[bar.index]}')
 
         # If there are children orders:
         if order.children_orders:
@@ -517,25 +535,25 @@ class Engine:
         trade.close(bar, price)
 
         # Update Portfolio Balance
-        self.portfolio.df.loc[bar.index, 'balance'] += trade.params.pnl
+        self.portfolio.dataframe.loc[bar.index, 'balance'] += trade.params.pnl
 
         # Mark the trade as closed
         trade.Status = Trade.Status.Closed
 
         # Remove the trade from self.trade dictionary (key = trade_id)
-        self.portfolio.trades[bar.ticker].pop(trade.id)
+        self.trades[bar.ticker].pop(trade.id)
 
         # Add trade trade history
-        self.history['trades'].append(trade)
+        self.history.append(trade)
 
         # Update Portfolio Value for that ticker with Exit Price, Then Reduce Them
-        self.portfolio.df.loc[bar.index, f'{bar.ticker} closed_pnl'] += trade.params.pnl 
+        self.portfolio.dataframe.loc[bar.index, f'{bar.ticker} closed_pnl'] += trade.params.pnl 
         self.compute_portfolio_stats(bar.index, exclude_closed=True)
         
         # For debugging purposes
         self.trade_count += 1
         logging.info(f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))')
-        logging.info(f'{self.portfolio.df.loc[bar.index]}')
+        logging.info(f'{self.portfolio.dataframe.loc[bar.index]}')
         logging.info(f'\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
 
     
@@ -545,17 +563,20 @@ class Engine:
             if ticker not in self.tickers:
                 return None
         
-            return len(self.portfolio.trades[ticker])
+            return len(self.trades[ticker])
         
         count = {}
         for ticker in self.tickers:
-            count[ticker] = len(self.portfolio.trades[ticker])
+            count[ticker] = len(self.trades[ticker])
 
         return sum(count.values())
 
 
     def onTrade(self, trade:Trade):
         '''
-        Use the method to monitor changes to self.portfolio.trades
+        Use the method to monitor changes to self.trades
         '''
-        return trade
+
+        # Update all observers
+        for observer in self.observers:
+            observer.update(trade)

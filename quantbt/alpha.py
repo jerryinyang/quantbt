@@ -1,25 +1,25 @@
-import pandas as pd
 import numpy as np
 
 from engine import Engine
 from orders import Order
 from observers import Observer
 from trades import Trade
-from utils import Bar
+from utils import Bar, Logger
 
 
 from typing import List, Dict
 from abc import ABC, abstractmethod
-from collections import OrderedDict as odict
 
 
 exectypes = Order.ExecType
 
 class Alpha(Observer, ABC):
 
+    logger = Logger('logger_alpha')
     params = {
-
     }
+
+
     def __init__(self, name:str, engine:Engine) -> None:
         '''
         This class handles the creating and sending of orders to the engine
@@ -31,8 +31,12 @@ class Alpha(Observer, ABC):
 
         # Store Trades, History
         self.orders : List[Order] = []
-        self.trades : Dict[str, odict[int, Order]] = {key : odict(callback=self.onTrade) for key in self.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
+        self.trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.engine.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
         self.history : List[Trade] = []
+
+        # Store Allocations
+        self.allocations : Dict[str, float] = {}
+
 
     @abstractmethod
     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
@@ -43,26 +47,37 @@ class Alpha(Observer, ABC):
             and (signal_long, signal_short, signal_exit_long, signal_exit_short, \
             exit_profit_price, exit_loss_price, exit_
         '''
+
+        # Update the allocations
+        self.allocations.update(allocation_per_ticker)
         
-        return pd.DataFrame
-    
-
-    @abstractmethod
-    def sizer(self):
         pass
-
+    
 
     @abstractmethod
     def reset_alpha(self, engine:Engine):
         '''
         Reset Alpha Engine.
         '''
-        engine = self.engine
+        self.__init__(engine)
 
-        self.__init__(engine, self.allocation)
+    
+    def sizer(self, bar : Bar):
+        # Get the current balance
+        current = self.engine.portfolio.get_record(0)
+        balance = current.balance
+        ticker = bar.ticker 
 
+        # Each Strategy should only hold one open position for an asset at a time
+        for trade in self.trades[ticker].values():
+            if ticker == trade.ticker:
+                return 0
+            
+        # Calculate the risk amount, based on available balance
+        return balance * self.allocations[ticker]
+        
 
-    def update(self, value : Order|Trade):
+    def update(self, value : Order|Trade) -> None:
         # Confirm that the passed order/trade belongs to this alpha
         if not value.alpha_name == self.name:
             return 
@@ -79,19 +94,27 @@ class Alpha(Observer, ABC):
             elif order.status in [Order.Status.Filled, Order.Status.Canceled]:
                 # Confirm that self.orders contain this order
                 if order in self.orders:
-                    self.orders.remove(order )
+                    self.orders.remove(order)
 
-        else:
+        elif isinstance(value, Trade):
             trade = value 
 
             # Add Active Trades to self.trades
             if trade.status == Trade.Status.Active:
                 self.trades[trade.ticker][trade.id] = trade
 
+                # Cancel other pending orders for the same ticker, under the same strategy
+                to_be_cancelled = []
+                for order in self.orders:
+                    if order.ticker == trade.ticker:
+                        to_be_cancelled.append(order)
+                self.cancel_order(to_be_cancelled)
+
             # Add Closed Trades to self.history
             else:
-                self.history.append(trade)
-    
+                # Remove the trade from self.trade dictionary (key = trade_id)
+                self.trades[trade.ticker].pop(trade.id)
+                self.history.append(trade) 
 
 
     # HANDLE ORDERS AND TRADES
@@ -157,14 +180,16 @@ class Alpha(Observer, ABC):
 
 
 class BaseAlpha(Alpha):
-    def __init__(self, engine: Engine, capital_allocation: float, profit_perc:float, loss_perc:float) -> None:
-        super().__init__(engine, capital_allocation)
+    def __init__(self, name : str, engine: Engine, profit_perc:float, loss_perc:float) -> None:
+        super().__init__(name, engine)
 
         self.profit_perc = profit_perc
         self.loss_perc = loss_perc
 
 
-    def next(self, eligibles:List[str], datas: Dict[str, Bar]):
+
+    def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
+        super().next(eligibles, datas, allocation_per_ticker)
 
         # Decision-making / Signal-generating Algorithm
         alpha_long, alpha_short = self.signal_generator(eligibles)
@@ -173,8 +198,10 @@ class BaseAlpha(Alpha):
         for ticker in eligible_assets:
             bar = datas[ticker]
 
-            # Calculate Allocation for Each Symbols (Equal Allocation)
+            # Calculate Risk Amount based on allocation_per_ticker
+            # debug(allocation_per_ticker)
             risk_dollars =  self.sizer(bar)
+            
 
             # Tickers to Long
             if ticker in alpha_long:
@@ -215,21 +242,16 @@ class BaseAlpha(Alpha):
         if not list_scores:
             return [], []
         
-        alpha_long = [list_scores[0]]
-        alpha_short = [list_scores[-1]]
+        alpha_long = [list_scores[0]]  # noqa: F841
+        alpha_short = [list_scores[-1]] # noqa: F841
 
-        return alpha_long, alpha_short       
-
-
-    def sizer(self, bar:Bar):
-        # Get current balance for that ticker, scaled to the strategy's allocation percent
-        return self.engine.portfolio.loc[bar.index, 'balance'] * self.engine.tickers_weight[bar.ticker] * self.allocation
+        return  ['AAPL'], [] # alpha_long, alpha_short       
 
 
     def reset_alpha(self, engine:Engine):
         '''
-        Reset Alpha Engine.
+        Resets the alpha with a new engine.
         '''
-        engine = self.engine
 
-        self.__init__(engine, self.allocation, self.profit_perc, self.loss_perc)
+        self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
+        self.logger.info(f'Alpha {self.name} successfully reset.')

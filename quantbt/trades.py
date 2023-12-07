@@ -47,6 +47,7 @@ class Trade:
             self.max_drawdown = 0  # Lowest PnL Value During Trade
             self.max_drawdown_perc = 0  # Lowest PnL Value During Trade / (Entry Price x Quantity) * 100
 
+
     def close(self, bar: Bar, price: float) -> None:
         """
         Closes the trade with the given closing price and updates relevant information.

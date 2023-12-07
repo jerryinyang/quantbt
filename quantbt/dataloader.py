@@ -1,8 +1,12 @@
 import pandas as pd
+import pytz
 
 from dateutil.parser import parse
 
 class DataLoader:
+    DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+    TZ = pytz.timezone('UTC')
+
     def __init__(self, dataframes:dict[str,pd.DataFrame], resolution:str, start_date, end_date) -> None:
         self.resolution = resolution # TODO : Implement Resolution class to handle resolution resampling
         self.tickers = list(dataframes.keys())

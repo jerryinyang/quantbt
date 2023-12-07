@@ -1,27 +1,23 @@
 import pandas as pd
 
-from typing import Dict, List
+from typing import List
 from collections import OrderedDict, namedtuple
 
-from orders import Order
-from trades import Trade
 from dataloader import DataLoader
-from utils import ObservableDict as odict
+from utils import Logger
 
 class Portfolio:
+    logger = Logger('logger_portfolio')
+
     # Each record is identified by an index, and contains balance, equity and open_pnl values
     Record = namedtuple('Record', ['date', 'balance', 'equity', 'open_pnl'])
 
     def __init__(self, dataloader : DataLoader, capital : float) -> None:
         self.records = OrderedDict()
-        self.df = self.init_portfolio(dataloader.date_range, dataloader.tickers, capital )
-
-        self.trades : Dict[str, odict[int, Order]] = {key : odict(callback=self.onTrade) for key in self.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
-        self.history : List[Trade] = []
+        self.dataframe : pd.DataFrame = self.init_portfolio(dataloader.date_range, dataloader.tickers, capital)
 
 
     def init_portfolio(self, date_range : pd.DatetimeIndex, tickers : List[str], capital : float):
-
         # Initialize Portfolio Dataframe: this would contain all the portfolio attributes
         portfolio =  pd.DataFrame({'timestamp': date_range}) # Initialize the full date range for the backtest
         portfolio.loc[0, 'balance'] = capital # Initialize the backtest capital (initial balance)
@@ -33,11 +29,37 @@ class Portfolio:
             portfolio.loc[0, f'{ticker} open_pnl'] = 0
             portfolio.loc[0, f'{ticker} closed_pnl'] = 0
 
+        # Initialize the self.records data as well
+        self.add_record(index=0, 
+                        date=portfolio.loc[0, 'timestamp'],
+                        balance=capital,
+                        equity=capital,
+                        open_pnl=0)
+
         return portfolio
     
     
-    def add_record(self, index, balance, equity, open_pnl):
+    def add_record(self, index, date, balance, equity, open_pnl):
         # Create an immutable Record namedtuple
-        record = self.Record(balance=balance, equity=equity, open_pnl=open_pnl)
+        record = self.Record(date=date, balance=balance, equity=equity, open_pnl=open_pnl)
         # Add to the OrderedDict
         self.records[index] = record
+
+    
+    def get_record(self, lookback : int):
+        # Check if there are records in the OrderedDict
+        if self.records:
+            
+            # If lookback period is larger than the available data
+            if lookback > len(self.records):
+                self.logger.warning(f'Lookback period {lookback} exceeds available records.')
+                return None
+
+            # Access the record based on the lookback period
+            record = list(self.records.values())[lookback - 1]
+
+            return record
+        else:
+            # Return None or handle the case where there are no records
+            return None
+        
