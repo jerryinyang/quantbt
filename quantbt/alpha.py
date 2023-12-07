@@ -4,7 +4,7 @@ from engine import Engine
 from orders import Order
 from observers import Observer
 from trades import Trade
-from utils import Bar, Logger
+from utils import Bar, Logger, debug   # noqa: F401
 
 
 from typing import List, Dict
@@ -26,6 +26,7 @@ class Alpha(Observer, ABC):
         Arguments: 
             engine : The broker emulator
         '''
+        Observer.__init__(self, name)
         self.name = name
         self.engine = engine
 
@@ -36,6 +37,9 @@ class Alpha(Observer, ABC):
 
         # Store Allocations
         self.allocations : Dict[str, float] = {}
+
+        # Add self to engine.observers
+        self.engine.add_observer(self)
 
 
     @abstractmethod
@@ -69,9 +73,8 @@ class Alpha(Observer, ABC):
         ticker = bar.ticker 
 
         # Each Strategy should only hold one open position for an asset at a time
-        for trade in self.trades[ticker].values():
-            if ticker == trade.ticker:
-                return 0
+        if len(self.trades[ticker]):
+            return 0 
             
         # Calculate the risk amount, based on available balance
         return balance * self.allocations[ticker]
@@ -88,13 +91,16 @@ class Alpha(Observer, ABC):
             
             # Newly Accepted Order
             if order.status == Order.Status.Accepted:
-                self.orders.append(order)
+                if order not in self.orders:
+                    self.orders.append(order)
 
             # Newly Removed Order
             elif order.status in [Order.Status.Filled, Order.Status.Canceled]:
                 # Confirm that self.orders contain this order
                 if order in self.orders:
                     self.orders.remove(order)
+            
+            return
 
         elif isinstance(value, Trade):
             trade = value 
@@ -103,18 +109,11 @@ class Alpha(Observer, ABC):
             if trade.status == Trade.Status.Active:
                 self.trades[trade.ticker][trade.id] = trade
 
-                # Cancel other pending orders for the same ticker, under the same strategy
-                to_be_cancelled = []
-                for order in self.orders:
-                    if order.ticker == trade.ticker:
-                        to_be_cancelled.append(order)
-                self.cancel_order(to_be_cancelled)
-
             # Add Closed Trades to self.history
-            else:
+            elif trade.status == Trade.Status.Closed:
                 # Remove the trade from self.trade dictionary (key = trade_id)
                 self.trades[trade.ticker].pop(trade.id)
-                self.history.append(trade) 
+                self.history.append(trade)
 
 
     # HANDLE ORDERS AND TRADES
@@ -131,7 +130,7 @@ class Alpha(Observer, ABC):
             exit_profit, exit_loss,
             exit_profit_percent, exit_loss_percent,
             trailing_percent, family_role, 
-            expiry_date
+            expiry_date, alpha_name=self.name
         )
 
 
@@ -148,7 +147,7 @@ class Alpha(Observer, ABC):
             exit_profit, exit_loss,
             exit_profit_percent, exit_loss_percent,
             trailing_percent, family_role, 
-            expiry_date
+            expiry_date, alpha_name=self.name
         )
 
 
@@ -187,7 +186,6 @@ class BaseAlpha(Alpha):
         self.loss_perc = loss_perc
 
 
-
     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
         super().next(eligibles, datas, allocation_per_ticker)
 
@@ -201,7 +199,6 @@ class BaseAlpha(Alpha):
             # Calculate Risk Amount based on allocation_per_ticker
             # debug(allocation_per_ticker)
             risk_dollars =  self.sizer(bar)
-            
 
             # Tickers to Long
             if ticker in alpha_long:

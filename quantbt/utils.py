@@ -91,7 +91,7 @@ class LogFormatter(logging.Formatter):
 
 class Logger(logging.Logger):
 
-    def __init__(self, name=__name__, level=logging.NOTSET):
+    def __init__(self, name=__name__, file_location : str = 'logs.log', level=logging.NOTSET):
         super().__init__(name, level)
 
         # Create and set the handler with the custom formatter
@@ -100,7 +100,7 @@ class Logger(logging.Logger):
         custom_handler.setFormatter(LogFormatter())
 
         # Create and set the FileHandler with the custom formatter
-        file_handler = logging.FileHandler('logs.log')
+        file_handler = logging.FileHandler(file_location)
         file_handler.setLevel(logging.DEBUG)  # Set the level for file logging
         file_handler.setFormatter(LogFormatter())
         self.addHandler(file_handler)
@@ -166,6 +166,11 @@ class ObservableDict(dict):
         value = self[key]
         super().__delitem__(key)
         self._on_update(value)
+
+    def pop(self, key, default=None):
+        value = super().pop(key, default)
+        self._on_update(value)
+        return value
 
     # To be called when olist is updated
     def _on_update(self, changed_object):

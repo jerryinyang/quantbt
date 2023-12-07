@@ -46,7 +46,7 @@ class Engine:
         self.history : List[Trade] = []
 
         # Keep Observers
-        self.observers : List[Observer] = []
+        self.observers : Dict[Observer] = {}
 
 
     # METHODS FOR COMPUTING PORTFOLIO
@@ -141,8 +141,13 @@ class Engine:
         self.portfolio.dataframe.loc[bar_index, 'open_pnl'] = total_open_pnl # Total Unrealized PnL
 
 
-    def add_observer(self, observer:Observer):
-        self.observers.append(observer)
+    def add_observer(self, observers:Observer | List[Observer]):
+        if isinstance(observers, list):
+            for observer in observers:
+                self.add_observer(observer)
+
+        else:
+            self.observers.update({observers.name : observers})
 
 
 
@@ -153,18 +158,18 @@ class Engine:
             exit_profit:float=None, exit_loss:float=None,
             exit_profit_percent:float=None, exit_loss_percent:float=None,
             trailing_percent:float=None, family_role=None, 
-            expiry_date=None) -> Order:
+            expiry_date=None, alpha_name=None) -> Order:
         
         
-        if size or (exectype == exectypes.Market):
+        if size:
             self.order_id += 1
             order = Order( # Create New Order Object 
                 self.order_id, bar, Order.Direction.Long, price, exectype, size,
                 stoplimit_price, parent_id, exit_profit, exit_loss,
                 exit_profit_percent, exit_loss_percent, trailing_percent, family_role, 
-                expiry_date
+                expiry_date, alpha_name
             )
-            
+
             # Add order into self.orders collection
             self._add_order(order)
 
@@ -178,15 +183,15 @@ class Engine:
             exit_profit:float=None, exit_loss:float=None,
             exit_profit_percent:float=None, exit_loss_percent:float=None,
             trailing_percent:float=None, family_role=None, 
-            expiry_date=None) -> Order:
+            expiry_date=None, alpha_name=None) -> Order:
         
-        if size or (exectype == exectypes.Market):
+        if size:
             self.order_id += 1
             order = Order( # Create New Order Object 
                 self.order_id, bar, Order.Direction.Short, price, exectype, size,
                 stoplimit_price, parent_id, exit_profit, exit_loss,
                 exit_profit_percent, exit_loss_percent, trailing_percent, family_role, 
-                expiry_date
+                expiry_date, alpha_name
             ) 
 
             # Add order into self.orders collection
@@ -320,11 +325,11 @@ class Engine:
         
         # Base Condition (order is Order instant)
         else:
-            # Remove the order from self.orders
-            self.orders.remove(order)
-
             # Expire the order
             order.cancel()
+
+            # Remove the order from self.orders
+            self.orders.remove(order)
 
             # logging.info(f'Order {order.id} Expired.')
 
@@ -338,11 +343,11 @@ class Engine:
         # Base Condition (order is Order instant)
         else:
             if order in self.orders:
-                # Remove the order from self.orders
-                self.orders.remove(order)
-
                 # Cancel the order
                 order.cancel()
+
+                # Remove the order from self.orders
+                self.orders.remove(order)
 
                 message = f'\nReason : {message}' if message else ''
                 # logging.info(f'Order {order.id} Cancelled.' + message)
@@ -359,11 +364,12 @@ class Engine:
         
         # Base Condition (order is Order instant)
         else:
+            # Fill the order
+            order.fill()
+
             # Remove the order from self.orders
             self.orders.remove(order)
 
-            # Fill the order
-            order.fill()
             # logging.info(f'Order {order.id} Filled Successfully.')
 
 
@@ -416,8 +422,9 @@ class Engine:
         '''
         
         # Update all observers
-        for observer in self.observers:
+        for observer in self.observers.values():
             observer.update(order)
+        return order
 
 
 
@@ -473,12 +480,12 @@ class Engine:
                 # Exit Profit Order
                 order_above = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
-                          expiry_date=None,
+                          expiry_date=None, alpha_name=order.alpha_name,
                           **order.children_orders['exit_profit'])
                 # Exit Loss Order
                 order_below = self.sell(bar, stoplimit_price=None, parent_id=self.trade_id, 
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
-                          expiry_date=None,
+                          expiry_date=None, alpha_name=order.alpha_name,
                           **order.children_orders['exit_loss'])
             
             else:
@@ -492,6 +499,10 @@ class Engine:
                           exit_profit=None, exit_loss=None, trailing_percent=None, 
                           expiry_date=None,
                           **order.children_orders['exit_loss'])
+                
+                # Return Size is zero
+                if not order_below or not order_above:
+                    return 
 
 
             # Execute the parent order
@@ -503,7 +514,6 @@ class Engine:
         
         # Add Trade to self.trades
         self.trades[bar.ticker][self.trade_id] = new_trade
-        # TODO : Update observers 
 
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
@@ -513,10 +523,8 @@ class Engine:
         logging.info(f'{self.portfolio.dataframe.loc[bar.index]}')
 
         # If there are children orders:
-        if order.children_orders:
+        if order.children_orders and order_above and order_below:
 
-            if not (order_above and order_below):
-                debug('What the fuck is happening')
             # Check if Children Orders would be filled in that bar
             if bar.open <= bar.close:
                 # For Green Bars, check the order above if it is filled on the same bar
@@ -578,5 +586,7 @@ class Engine:
         '''
 
         # Update all observers
-        for observer in self.observers:
+        for observer in self.observers.values():
             observer.update(trade)
+        return trade
+

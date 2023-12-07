@@ -69,9 +69,6 @@ class Backtester:
 
     def backtest(self):
         print('Initiating Backtest')
-
-        # Set Backtest Range for Engine
-        # self.engine.portfolio.dataframe = self.engine.portfolio.init_portfolio(self.engine.date_range)
         
         # Iterate through each bar/index (timestamp) in the backtest range
         for bar_index in self.engine.portfolio.dataframe.index:
@@ -132,7 +129,9 @@ class Backtester:
                     # Units of asset in holding (Set to zero)
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} units'] += 0
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} open_pnl'] += 0
-            
+        
+        print(self.alphas[0].trades)
+        print(self.engine.trades)
         print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
         return self.engine.history
 
