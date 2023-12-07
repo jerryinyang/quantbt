@@ -77,7 +77,10 @@ class Alpha(Observer, ABC):
             return 0 
             
         # Calculate the risk amount, based on available balance
-        return balance * self.allocations[ticker]
+        try:
+            return balance * self.allocations[ticker]
+        except Exception:
+            print(self.allocations)
         
 
     def update(self, value : Order|Trade) -> None:
@@ -177,7 +180,6 @@ class Alpha(Observer, ABC):
                 self.close_trade(trade, bar, price)
 
 
-
 class BaseAlpha(Alpha):
     def __init__(self, name : str, engine: Engine, profit_perc:float, loss_perc:float) -> None:
         super().__init__(name, engine)
@@ -239,10 +241,10 @@ class BaseAlpha(Alpha):
         if not list_scores:
             return [], []
         
-        alpha_long = [list_scores[0]]  # noqa: F841
-        alpha_short = [list_scores[-1]] # noqa: F841
+        alpha_long = [list_scores[0]] 
+        alpha_short = [list_scores[-1]] 
 
-        return  ['AAPL'], [] # alpha_long, alpha_short       
+        return alpha_long, alpha_short       
 
 
     def reset_alpha(self, engine:Engine):

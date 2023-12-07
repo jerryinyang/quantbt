@@ -1,20 +1,12 @@
 import random
 import pandas as pd
-import numpy as np # noqa: F401
-import matplotlib.pyplot as plt # noqa: F401
-import concurrent.futures # noqa: F401
-from typing import Dict, List # noqa: F401
+import numpy as np 
+import concurrent.futures 
 
 from backtester import Backtester
-from utils import Logger 
-from utils import clear_terminal, debug, sorted_index  # noqa: F401
-from reporters import Reporter # noqa: F401
-import os
 
 from engine import Engine
-from alpha import BaseAlpha
-from copy import deepcopy
-
+from copy import deepcopy, copy
 
 
 class Analyser:
@@ -27,7 +19,6 @@ class Analyser:
         assert backtester.alphas, ValueError('Backtester must have at least one alpha to be analyzed.')
 
         self.backtester = backtester
-        self.logger = Logger('analyzer')
 
 
     def analyse_robustness_price(self, iterations:int, synthesis_mode : float | str='perturb', noise_factor : float = 1):
@@ -50,17 +41,12 @@ class Analyser:
         # Store backtest results, contains trade history list for each backtest iteration
         analysis_history = []
 
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # Submit tasks for each iteration
+        with concurrent.futures.ProcessPoolExecutor() as executor:  # Use ProcessPoolExecutor here
             futures = [executor.submit(self._iter_robustness_price, synthesizer, noise_factor) for _ in range(iterations)]
-
-            # Wait for all tasks to complete
             concurrent.futures.wait(futures)
-
-            # Retrieve results from completed tasks
             analysis_history = [future.result() for future in futures]
         
-        # Sequential execution without concurrency
+        # # Sequential execution without concurrency
         # analysis_history = [self._iter_robustness_price(synthesizer, noise_factor) for _ in range(iterations)]
 
         return analysis_history
@@ -174,7 +160,6 @@ class Analyser:
         if not synthesizer:
             synthesizer =  random.choice([self.synthesize_price_permute, self.synthesize_price_perturb])
 
-
         # Modify backtester.engine.dataframes 
         dataframes = deepcopy(self.backtester.original_dataframes)
         
@@ -183,19 +168,30 @@ class Analyser:
             new_data = synthesizer(ticker_data, noise_factor)
             dataframes[ticker] = new_data
 
+        # Get a copy of self.backtester, unique for each iteration
+        backtester = copy(self.backtester)
+
         # Reset backtester.engine with new dataframes
-        self.backtester.reset_backtester(dataframes)
-        
-        print(f"Starting Capital : {self.backtester.engine.CAPITAL}")
+        backtester.reset_backtester(dataframes)
 
         # Run backtest
-        trade_history = self.backtester.backtest()
+        trade_history = self.backtester.backtest(analysis_mode=True)
 
         return trade_history
     
 
 if __name__ == '__main__':
     import yfinance as yf
+    import pandas as pd
+    import os
+    
+    from alpha import BaseAlpha
+    from dataloader import DataLoader
+    from reporters import Reporter  # noqa: F401
+    from utils import clear_terminal
+
+    
+
     start_date = '2020-01-02'
     end_date = '2023-12-31'
 
@@ -203,7 +199,7 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL', 'GOOG', 'TSLA']
+    tickers = ['AAPL'] #, 'GOOG', 'TSLA']
     ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
@@ -221,35 +217,13 @@ if __name__ == '__main__':
 
     dataframes = dict(zip(tickers, dfs))
 
-    engine = Engine(tickers, dataframes, '1d', start_date, end_date)
-    # alpha = BaseAlpha(engine, 1, .1, .03)
-    # alpha2 = BaseAlpha(engine, 1, .05, .2)
-    alpha2 = BaseAlpha(engine, 1, .1, .05)
+    # Create DataHandler
+    dataloader = DataLoader(dataframes, '1d', start_date, end_date)
+    engine = Engine(dataloader)
+    alpha = BaseAlpha('base_alpha', engine, .1, .05)
 
-    backtester = Backtester(engine, alpha2)
-    # backtester.add_alpha(alpha)
-    # backtester.add_alpha(alpha2)
-
-
-    # From Here Analyse
-    anal = Analyser(backtester)
-    anal.analyse_robustness_price(10, 'permute', noise_factor=0.01)
-
-    # dataframes = backtester.engine.dataframes
-        
-    # for ticker, ticker_data in dataframes.items():
-    #     # Synthesize new data
-    #     new_data = anal.synthesize_price_perturb(ticker_data, 0.01)
-    #     dataframes[ticker] = new_data
-
-    # # Reset backtester.engine.dataframes 
-    # backtester.engine.reset(dataframes)
-
+    backtester = Backtester(dataloader, engine, alpha, 1 )
     # trade_history = backtester.backtest()
 
-    # # Use Reported
-    # reporter = Reporter(trade_history)
-
-    # metric :pd.DataFrame = reporter.report()['full'][1]
-
-    # metric.to_csv('data/test.csv', index=True)
+    analyser = Analyser(backtester)
+    data = analyser.analyse_robustness_price(50, 'perturb', 0.01)

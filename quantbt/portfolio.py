@@ -6,11 +6,12 @@ from collections import OrderedDict, namedtuple
 from dataloader import DataLoader
 from utils import Logger
 
+# Each record is identified by an index, and contains balance, equity and open_pnl values
+Record = namedtuple('Record', ['date', 'balance', 'equity', 'open_pnl'])
+
 class Portfolio:
     logger = Logger('logger_portfolio')
 
-    # Each record is identified by an index, and contains balance, equity and open_pnl values
-    Record = namedtuple('Record', ['date', 'balance', 'equity', 'open_pnl'])
 
     def __init__(self, dataloader : DataLoader, capital : float) -> None:
         self.records = OrderedDict()
@@ -41,7 +42,7 @@ class Portfolio:
     
     def add_record(self, index, date, balance, equity, open_pnl):
         # Create an immutable Record namedtuple
-        record = self.Record(date=date, balance=balance, equity=equity, open_pnl=open_pnl)
+        record = Record(date=date, balance=balance, equity=equity, open_pnl=open_pnl)
         # Add to the OrderedDict
         self.records[index] = record
 

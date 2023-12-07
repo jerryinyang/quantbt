@@ -1,4 +1,5 @@
 import logging
+import pandas as pd
 from typing import List
 
 from engine import Engine
@@ -15,7 +16,7 @@ logging.basicConfig(filename='logs.log', level=logging.INFO)
 exectypes = Order.ExecType
 
 class Backtester:
-    _original_dfs : Engine= None
+    _original_dfs : dict[pd.DataFrame] = None
 
     logger = Logger('logger_backtester')
 
@@ -24,19 +25,20 @@ class Backtester:
                  engine : Engine, 
                  alphas : list[Alpha], 
                  max_allocation : float,
-                 in_analyzer : bool = False) -> None:
+                 analysis_mode : bool = False) -> None:
         
         self.datas = dataloader
         self.engine = engine
 
         # Add Alphas into backtester alphas list
         self.alphas : List[Alpha] = self._init_alpha(alphas)
+        self.max_allocation = max_allocation
 
         # Add a Sizer
         self.sizer = Sizer(self.engine, self.alphas, max_allocation)
 
         # If Backtester is being initialized within and Analyzer, don't modify the initial_engine
-        if not in_analyzer:
+        if not analysis_mode:
             self._original_dfs = deepcopy(dataloader.dataframes)
 
 
@@ -67,8 +69,9 @@ class Backtester:
         self.sizer = Sizer(self.engine, self.alphas)
 
 
-    def backtest(self):
-        print('Initiating Backtest')
+    def backtest(self, analysis_mode=False):
+        if not analysis_mode:
+            print('Initiating Backtest')
         
         # Iterate through each bar/index (timestamp) in the backtest range
         for bar_index in self.engine.portfolio.dataframe.index:
@@ -130,19 +133,29 @@ class Backtester:
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} units'] += 0
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} open_pnl'] += 0
         
-        print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
-        return self.engine.history
+        if not analysis_mode:
+            print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
+
+        return self.engine.portfolio
 
 
-    def reset_backtester(self, dataframes:dict):
+    def reset_backtester(self, dataframes:pd.DataFrame):
         '''
         Resets the backtester for another run. Resets the engine with new data.
         '''
-        # Reset Engines
-        self.engine.reset_engine(dataframes)
+        # Reset DataLoader
+        self.datas.reset_dataloader(dataframes)
+
+        # Use DataLoader to Reset Engine
+        self.engine.reset_engine(self.datas)
 
         # Reset Backtester; Reset Alphas with new engine
-        self.__init__(self.engine, self.alphas, True)
+        self.__init__(
+                 self.datas, 
+                 self.engine, 
+                 self.alphas, 
+                 self.max_allocation,
+                 True)
 
 
     @property

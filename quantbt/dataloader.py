@@ -10,6 +10,8 @@ class DataLoader:
     def __init__(self, dataframes:dict[str,pd.DataFrame], resolution:str, start_date, end_date) -> None:
         self.resolution = resolution # TODO : Implement Resolution class to handle resolution resampling
         self.tickers = list(dataframes.keys())
+        self.start_date = start_date
+        self.end_date = end_date
         
         self.date_range = pd.date_range(start=parse(start_date, ignoretz=True), 
                                         end=parse(end_date, ignoretz=True), 
@@ -52,3 +54,12 @@ class DataLoader:
             
             # Confirms if each row contains new data in any of the passed columns
             return df_different.any(axis=1)
+
+
+    def reset_dataloader(self, dataframes:dict[str,pd.DataFrame]):
+        self.__init__(
+             dataframes,
+             self.resolution,
+             self.start_date,
+             self.end_date
+        )

@@ -150,6 +150,8 @@ class Engine:
             self.observers.update({observers.name : observers})
 
 
+    def reset_engine(self, dataloader:DataLoader):
+        self.__init__(dataloader)
 
 
     # METHODS FOR ORDER PROCESSING
@@ -352,8 +354,8 @@ class Engine:
                 message = f'\nReason : {message}' if message else ''
                 self.logger.info(f'Order {order.id} Cancelled.' + message)
 
-            else:
-                raise self.logger.warning(f"Order {order.id} is not found in the orders list. Remove operation unsuccessful", ValueError)
+            # else:
+            #     raise self.logger.warning(f"Order {order.id} is not found in the orders list. Remove operation unsuccessful", ValueError)
 
 
     def _fill_order(self, order:Order | List[Order]):
