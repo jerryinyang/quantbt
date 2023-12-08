@@ -1,8 +1,12 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+from typing import Any # noqa : F401
+
 from trades import Trade
-# from engine import Engine
+from engine import Engine
+from portfolio import Portfolio
 
 class Reporter:
     def __init__(self, trades_history : list[Trade]) -> None:
@@ -311,3 +315,87 @@ class Reporter:
 
         # Show the plot
         plt.show()
+
+
+class AutoReporter:
+    def __init__(self, engine:Engine) -> None:
+        self.portfolio = self._prepare_portfolio(engine.portfolio)
+        self.trades = self._process_trade_history(engine.history)
+
+        self.port = engine.portfolio
+    
+
+    def _prepare_portfolio(self, portfolio : Portfolio):        
+        # Extract Returns From Portfolio
+        data = portfolio.dataframe['equity'].pct_change()
+
+        # Add and Rename Index to Date; Remove Timezone
+        data.index = portfolio.dataframe['timestamp']
+        data.index.name = 'Date'
+        return data
+
+
+    def _process_trade_history(self, history : list[Trade]):
+    
+        """
+        Compute and return a trades report including all trades and trades per ticker.
+
+        Returns:
+        - all_trades (pd.DataFrame): DataFrame containing properties of all trades.
+        - trades_per_ticker (dict): Dictionary with tickers as keys and trade DataFrames as values.
+        """
+
+        # Initialize an empty list to store trade properties for all trades
+        trades_list = []
+
+        # Iterate through each trade in the history
+        for index in range(len(history)):
+            # Access the trade object
+            trade: Trade = history[index]
+
+            # Extract relevant properties from the trade
+            properties = {
+                'id': trade.id,
+                'direction': trade.direction.value,
+                'ticker': trade.ticker,
+                'entry_timestamp': pd.Timestamp(trade.entry_timestamp),
+                'exit_timestamp': pd.Timestamp(trade.exit_timestamp),
+                'entry_price': trade.entry_price,
+                'exit_price': trade.exit_price,
+                'size': trade.size,
+                'profit': trade.params.pnl,
+                'profit_percent': trade.params.pnl_perc,
+                'max_runup': trade.params.max_runup,
+                'max_runup_percent': trade.params.max_runup_perc,
+                'max_drawdown': trade.params.max_drawdown,
+                'max_drawdown_percent': trade.params.max_drawdown_perc,
+            }
+
+            # Append the trade properties to the list
+            trades_list.append(properties)
+
+        # Compile all trade properties into a Pandas DataFrame
+        trades = pd.DataFrame(trades_list)
+
+        # Convert data types of DataFrame columns for consistency
+        trades = trades.astype({
+            'id': int,
+            'direction': int,
+            'ticker': str,
+            'entry_price': float,
+            'exit_price': float,
+            'size': float,
+            'profit': float,
+            'profit_percent': float,
+            'max_runup': float,
+            'max_runup_percent': float,
+            'max_drawdown': float,
+            'max_drawdown_percent': float
+        })
+
+        # Return the overall trades DataFrame and the dictionary of trades per ticker
+        return trades
+    
+
+    # def _prepare_trades(self, history:pd.DataFrame, portfolio : Portfolio):
+    #     portfolio[]

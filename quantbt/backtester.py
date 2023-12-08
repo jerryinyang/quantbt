@@ -136,7 +136,7 @@ class Backtester:
         if not analysis_mode:
             print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
 
-        return self.engine.portfolio
+        return self.engine
 
 
     def reset_backtester(self, dataframes:pd.DataFrame):
@@ -171,10 +171,11 @@ if __name__ == '__main__':
     import yfinance as yf
     import pandas as pd
     import os
+    import pickle  # noqa: F401
     
     from alpha import BaseAlpha
     from dataloader import DataLoader
-    from reporters import Reporter  # noqa: F401
+    from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
     
 
@@ -185,7 +186,7 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL'] #, 'GOOG', 'TSLA']
+    tickers = ['AAPL'] #, 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
     ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
@@ -208,13 +209,17 @@ if __name__ == '__main__':
     engine = Engine(dataloader)
     alpha = BaseAlpha('base_alpha', engine, .1, .05)
 
-    backtester = Backtester(dataloader, engine, alpha, 1 )
+    backtester = Backtester(dataloader, engine, alpha, 1)
 
-    # # backtester.add_alpha(alpha)
+    # backtester.add_alpha(alpha)
 
-    trade_history = backtester.backtest()
+    trades = backtester.backtest()
 
-    # # Use Reported
-    # reporter = Reporter(trade_history)
-    # metric :pd.DataFrame = reporter.report()['full'][1]
-    # metric.to_csv('data/test.csv', index=True)
+    # portfolio.dataframe.to_parquet('final_portfolio.parquet')
+
+    # Use Reported
+    # reporter = AutoReporter(trades)
+
+    # # Pickle the instance
+    # with open('reporter.pkl', 'wb') as file:
+    #     pickle.dump(reporter, file)

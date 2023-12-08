@@ -277,10 +277,13 @@ class Engine:
                 # Insufficient Balance for the Trade
                 if (self.portfolio.dataframe.loc[bar.index, 'balance'] < (order.size * fill_price)):
 
+                    debug(f'Why are we here: {bar.timestamp}')
+
                     # Resize the order, if it is a Market Order
                     if order.exectype == exectypes.Market:
                         order.size = self._recalculate_market_order_size(order, bar, fill_price)
                         order.price = fill_price
+                        
 
                     # For Pending Orders, cancel it
                     else: 
@@ -290,6 +293,7 @@ class Engine:
                 
                 if (self.portfolio.dataframe.loc[bar.index, 'balance'] >= (order.size * fill_price)):
                     # Add order to filled orders
+                    debug(f'Filled : {fill_price}, size:{order.size}')
                     self._fill_order(order)
 
                     # Execute the order
@@ -524,7 +528,7 @@ class Engine:
         # Add Trade Info to Logs
         self.logger.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n')
         trade_log = \
-            f'\n\n\n\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n' + \
+            f'\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n' + \
             f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n' + \
             f'{self.portfolio.dataframe.loc[bar.index]}'
         self.trade_logger.info(trade_log)
@@ -571,9 +575,8 @@ class Engine:
 
         # Add Trade to Log
         self.logger.info(f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))')
-
         trade_log = \
-            f'TRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))' + \
+            f'\nTRADE CLOSED : (Entry : {trade.entry_price}, Exit : ({price}))\n' + \
             f'{self.portfolio.dataframe.loc[bar.index]}\n' + \
             f'\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {trade.id} CLOSED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>'
         self.trade_logger.info(trade_log)

@@ -64,3 +64,25 @@ class Portfolio:
             # Return None or handle the case where there are no records
             return None
         
+
+    def to_dataframe(self):
+        records_list = []
+
+        for index, record in self.records.items():
+            record_dict = {
+                'index': index,
+                'date': record.date,
+                'balance': record.balance,
+                'equity': record.equity,
+                'open_pnl': record.open_pnl,
+            }
+
+            # Add ticker-specific columns dynamically
+            for ticker in self.dataframe.columns:
+                if ticker.endswith(' units') or ticker.endswith(' open_pnl') or ticker.endswith(' closed_pnl'):
+                    record_dict[ticker] = self.dataframe.loc[index, ticker]
+
+            records_list.append(record_dict)
+
+        dataframe = pd.DataFrame(records_list).set_index('index')
+        return dataframe

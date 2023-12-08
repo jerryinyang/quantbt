@@ -83,20 +83,20 @@ class LogFormatter(logging.Formatter):
     def format(self, record):
         level = record.levelname
         if level in ['DEBUG', 'INFO']:
-            self._style._fmt = '%(asctime)s - %(levelname)s [%(name)s] - %(message)s'
+            self._style._fmt = '%(asctime)s - %(levelname)s [%(name)s] - %(message)s \n'
         elif level in ['WARNING', 'ERROR']:
-            self._style._fmt = '%(asctime)s - %(levelname)s [%(name)s] \n %(message)s - %(pathname)s:%(lineno)d'
+            self._style._fmt = '%(asctime)s - %(levelname)s [%(name)s] \n %(message)s - %(pathname)s:%(lineno)d \n'
         return super().format(record)
 
 
 class Logger(logging.Logger):
 
-    def __init__(self, name=__name__, file_location : str = 'logs.log', level=logging.WARNING):
+    def __init__(self, name=__name__, file_location : str = 'logs.log', level=logging.DEBUG):
         super().__init__(name, level)
 
         # Create and set the handler with the custom formatter
         custom_handler = logging.StreamHandler()
-        custom_handler.setLevel(logging.DEBUG)  # Set the level to the lowest level you want to capture
+        custom_handler.setLevel(logging.WARNING)  # Set the level to the lowest level you want to capture
         custom_handler.setFormatter(LogFormatter())
 
         # Create and set the FileHandler with the custom formatter

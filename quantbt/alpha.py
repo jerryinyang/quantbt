@@ -74,13 +74,11 @@ class Alpha(Observer, ABC):
 
         # Each Strategy should only hold one open position for an asset at a time
         if len(self.trades[ticker]):
+            debug([trade.status for trade in self.trades[ticker].values()])
             return 0 
             
         # Calculate the risk amount, based on available balance
-        try:
-            return balance * self.allocations[ticker]
-        except Exception:
-            print(self.allocations)
+        return balance * self.allocations[ticker]
         
 
     def update(self, value : Order|Trade) -> None:
@@ -210,6 +208,8 @@ class BaseAlpha(Alpha):
 
                 exit_tp = entry_price * (1 + self.profit_perc)
                 exit_sl = entry_price * (1 - self.loss_perc)
+
+                debug(f"Initial Price :{entry_price}, Initial Size : {risk_dollars}")
                 
                 # Create and Send Long Order
                 self.buy(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
