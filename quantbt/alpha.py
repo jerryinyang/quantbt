@@ -68,15 +68,9 @@ class Alpha(Observer, ABC):
     
     def sizer(self, bar : Bar):
         # Get the current balance
-        current = self.engine.portfolio.get_record(0)
-        balance = current.balance
+        balance = self.engine.portfolio.dataframe.loc[bar.index , 'balance']
         ticker = bar.ticker 
-
-        # Each Strategy should only hold one open position for an asset at a time
-        if len(self.trades[ticker]):
-            debug([trade.status for trade in self.trades[ticker].values()])
-            return 0 
-            
+        
         # Calculate the risk amount, based on available balance
         return balance * self.allocations[ticker]
         
@@ -100,8 +94,6 @@ class Alpha(Observer, ABC):
                 # Confirm that self.orders contain this order
                 if order in self.orders:
                     self.orders.remove(order)
-            
-            return
 
         elif isinstance(value, Trade):
             trade = value 
@@ -117,6 +109,7 @@ class Alpha(Observer, ABC):
                 self.history.append(trade)
 
 
+
     # HANDLE ORDERS AND TRADES
     def buy(self, bar, price, size:float, exectype:Order.ExecType, 
             stoplimit_price:float=None, parent_id:str=None,
@@ -124,6 +117,7 @@ class Alpha(Observer, ABC):
             exit_profit_percent:float=None, exit_loss_percent:float=None,
             trailing_percent:float=None, family_role=None, 
             expiry_date=None) -> Order:
+
 
         return self.engine.buy(
             bar, price, size, exectype, 
@@ -197,7 +191,6 @@ class BaseAlpha(Alpha):
             bar = datas[ticker]
 
             # Calculate Risk Amount based on allocation_per_ticker
-            # debug(allocation_per_ticker)
             risk_dollars =  self.sizer(bar)
 
             # Tickers to Long
@@ -208,8 +201,6 @@ class BaseAlpha(Alpha):
 
                 exit_tp = entry_price * (1 + self.profit_perc)
                 exit_sl = entry_price * (1 - self.loss_perc)
-
-                debug(f"Initial Price :{entry_price}, Initial Size : {risk_dollars}")
                 
                 # Create and Send Long Order
                 self.buy(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    

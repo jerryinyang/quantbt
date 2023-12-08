@@ -204,7 +204,7 @@ class Engine:
         return None  
   
 
-    def _add_order(self, order:Order | List[Order]):    
+    def _add_order(self, order:Order | List[Order]):  
         # If the new order is a market  
         # If the order is a market order, and 
         # The number of active trades for that ticker is at the maximum, reject the order
@@ -277,8 +277,6 @@ class Engine:
                 # Insufficient Balance for the Trade
                 if (self.portfolio.dataframe.loc[bar.index, 'balance'] < (order.size * fill_price)):
 
-                    debug(f'Why are we here: {bar.timestamp}')
-
                     # Resize the order, if it is a Market Order
                     if order.exectype == exectypes.Market:
                         order.size = self._recalculate_market_order_size(order, bar, fill_price)
@@ -293,7 +291,6 @@ class Engine:
                 
                 if (self.portfolio.dataframe.loc[bar.index, 'balance'] >= (order.size * fill_price)):
                     # Add order to filled orders
-                    debug(f'Filled : {fill_price}, size:{order.size}')
                     self._fill_order(order)
 
                     # Execute the order
@@ -518,12 +515,11 @@ class Engine:
             # Execute the Trade
             new_trade = Trade(self.trade_id, order, timestamp=bar.timestamp)
         
-        # Add Trade to self.trades
-        self.trades[bar.ticker][self.trade_id] = new_trade
-
         # Update Ticker Units in Portfolio
         self.compute_portfolio_stats(bar.index, exclude_closed=False)
 
+        # Add Trade to self.trades
+        self.trades[bar.ticker][self.trade_id] = new_trade
 
         # Add Trade Info to Logs
         self.logger.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n')
@@ -554,8 +550,10 @@ class Engine:
         self._update_trade(trade, bar, price)
         trade.close(bar, price)
 
-        # Update Portfolio Balance
+        # Update Portfolio Balance, Portfolio Value for that ticker with Exit Price, Then Reduce Them
         self.portfolio.dataframe.loc[bar.index, 'balance'] += trade.params.pnl
+        self.portfolio.dataframe.loc[bar.index, f'{bar.ticker} closed_pnl'] += trade.params.pnl 
+        self.compute_portfolio_stats(bar.index, exclude_closed=True)
 
         # Mark the trade as closed
         trade.Status = Trade.Status.Closed
@@ -565,10 +563,6 @@ class Engine:
 
         # Add trade trade history
         self.history.append(trade)
-
-        # Update Portfolio Value for that ticker with Exit Price, Then Reduce Them
-        self.portfolio.dataframe.loc[bar.index, f'{bar.ticker} closed_pnl'] += trade.params.pnl 
-        self.compute_portfolio_stats(bar.index, exclude_closed=True)
         
         # For debugging purposes
         self.trade_count += 1
@@ -582,19 +576,25 @@ class Engine:
         self.trade_logger.info(trade_log)
 
     
-    def count_active_trades(self, ticker:str=None):  
+    def count_active_trades(self, ticker:str=None, alpha_name:str=None):  
         # If ticker is passed       
         if ticker is not None:
             if ticker not in self.tickers:
-                return None
-        
-            return len(self.trades[ticker])
-        
-        count = {}
-        for ticker in self.tickers:
-            count[ticker] = len(self.trades[ticker])
+                return None    
+            trades = self.trades[ticker]
 
-        return sum(count.values())
+            # Filter the trades further by alpha_name
+            if alpha_name is not None:
+                trades = [trade for trade in trades if trade.alpha_name == alpha_name]
+            
+            return len(trades)
+        
+        # Count all trades
+        count = 0
+        for ticker in self.tickers:
+            count += len(self.trades[ticker])
+
+        return count
 
 
     def onTrade(self, trade:Trade):
