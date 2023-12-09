@@ -1,3 +1,3 @@
 # Tasks on `engine.py`
-- [ ] Add reporter to analyzer
-- [ ] Save backtests to disk
+- [ ] Store the ids of the original backtesters; use that instead of 'original'
+- [ ] Review data simulation functions

@@ -197,7 +197,7 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL', 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
+    tickers = ['AAPL'] # 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
     ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
@@ -224,13 +224,13 @@ if __name__ == '__main__':
 
     trades = backtester.backtest()
 
-    # # Use Reporter
-    # reporter = AutoReporter('full')
-    # reporter.compute_report(backtester)
-    # reporter.compute_report(backtester)
+    # Use Reporter
+    reporter = AutoReporter('full', 'full')
+    reporter.compute_report(backtester)
+    reporter.compute_report(backtester)
 
-    # # Pickle the instance
-    # with open('reporter.pkl', 'wb') as file:
-    #     pickle.dump(reporter, file)
+    # Pickle the instance
+    with open('reporter.pkl', 'wb') as file:
+        pickle.dump(reporter, file)
 
     

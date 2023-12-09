@@ -21,9 +21,9 @@ class Analyser:
         assert backtester.alphas, ValueError('Backtester must have at least one alpha to be analyzed.')
 
         self.backtester = backtester
-        self.reporter = AutoReporter()
 
-    def analyse_robustness_price(self, iterations:int, synthesis_mode : float | str='perturb', noise_factor : float = 1):
+
+    def analyse_robustness_price(self, reporter : AutoReporter, iterations:int, synthesis_mode : float | str='perturb', noise_factor : float = 1):
         '''
         For this analysis, synthetic OHLCV data is created by modifying the actual backtest data. 
         Then, the backtest is run `n` times, and the performance metrics are recalculated and compared.
@@ -50,7 +50,12 @@ class Analyser:
                 'leave': True # Leave the Bar in the terminal when completed
             }
             # using tqdm to track progress
-            [self.reporter.compute_report(future.result()) for future in tqdm(as_completed(futures), **kwargs)]
+            [reporter.compute_report(future.result()) for future in tqdm(as_completed(futures), **kwargs)]
+
+            # Run strategy with Original Backtester
+            self.backtester.id = 'original'
+            self.backtester.backtest(analysis_mode=True)
+            reporter.compute_report(self.backtester)
 
         print('Analysis Completed.')
     
@@ -209,7 +214,7 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL', 'GOOG', 'TSLA']
+    tickers = ['AAPL'] # , 'GOOG', 'TSLA']
     ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
@@ -233,11 +238,12 @@ if __name__ == '__main__':
     alpha = BaseAlpha('base_alpha', engine, .1, .05)
 
     backtester = Backtester(dataloader, engine, alpha, 1 )
-    # trade_history = backtester.backtest()
+
+    reporter = AutoReporter(returns_mode='full')
 
     analyser = Analyser(backtester)
-    data = analyser.analyse_robustness_price(1000, 'perturb', 0.01)
+    data = analyser.analyse_robustness_price(reporter, 50, 'perturb', 0.01)
 
     # Pickle the instance
-    with open('reporter.pkl', 'wb') as file:
-        pickle.dump(analyser.reporter, file)
+    with open('1000.pkl', 'wb') as file:
+        pickle.dump(reporter, file)

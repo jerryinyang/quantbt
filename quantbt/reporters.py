@@ -1,25 +1,32 @@
 import pandas as pd
+import numpy as np
 import quantstats as qs
 
-from typing import Any # noqa : F401
+from typing import List, Dict, Union # noqa : F401
 
 from trades import Trade
 from portfolio import Portfolio
 from backtester import Backtester
 
 class AutoReporter:
-    def __init__(self, mode : str = 'basic') -> None:
-        self.mode = mode
-        self.reports = pd.DataFrame()
-        ...
-    
+    def __init__(self, metrics_mode:str = 'basic', returns_mode : str = 'full') -> None:
+        self.metrics_mode = metrics_mode # Options : 'basic', 'metrics', 'full'
+        self.earnings_mode = returns_mode.replace('-','_').replace(' ', '_') # Options : 'trades' | 'trades_only', 'full' | 'portfolio'
+
+        # Containers
+        self.metrics = pd.DataFrame()
+        self.earnings = pd.DataFrame()
+        
+        self.earnings_trades = {}
+        self.earnings_portfolio = {}
 
     def compute_report(self, backtester : Backtester, smart:bool=True):
         # Get Necessary Data
         id = backtester.id
         portfolio = backtester.engine.portfolio
         history = backtester.engine.history
-        mode = self.mode
+        capital = backtester.engine.CAPITAL
+        mode = self.metrics_mode
         
         # Select the columns to be include, based on the mode
         modes = ['basic', 'metrics', 'full']
@@ -67,7 +74,7 @@ class AutoReporter:
 
         # Compute Trade and Portfolio Metrics
         metrics_portfolio = self._compute_portfolio_metrics(id, portfolio, smart)
-        metrics_trades = self._compute_trade_metrics(id, history)
+        metrics_trades = self._compute_trade_metrics(id, history, capital)
 
         # Merge Metrics, Reset Index
         metrics = pd.merge(metrics_portfolio, metrics_trades, left_index=True, right_index=True)
@@ -75,13 +82,39 @@ class AutoReporter:
         metrics.rename(columns={'index': 'id'}, inplace=True)
 
         # Append new row into self.reports
-        self.reports = pd.concat([self.reports, metrics[columns]], ignore_index=True)
+        self.metrics = pd.concat([self.metrics, metrics[columns]], ignore_index=True)
 
         return metrics[columns]
-        
+    
+    
+    def compute_earnings(self):
+        # If self.earnings_mode is portfolio, 
+        # Combine all the columns in a dataframe, with 'date' as the index
+        # Assuming self.earnings_portfolio is defined as a dictionary
+        if self.earnings_mode in ['full', 'portfolio']:
+            earnings = pd.DataFrame(self.earnings_portfolio)
+            earnings['date'] = pd.to_datetime(earnings['date'])
+            earnings.set_index('date', inplace=True)
 
-    def _compute_trade_metrics(self, id:str, history : list[Trade]):
-        trades = self._process_trade_history(history)
+        else:
+            # Find the maximum length of arrays
+            max_length = max(len(arr) for arr in self.earnings_trades.values())
+
+            # Create a dictionary with keys as column names and values as lists of array values
+            formatted_data = {key: list(arr) + [np.nan] * (max_length - len(arr)) for key, arr in self.earnings_trades.items()}
+
+            # Create a Pandas DataFrame
+            earnings = pd.DataFrame(formatted_data)
+
+
+        self.earnings = earnings
+    
+
+    def _compute_trade_metrics(self, id:str, history : list[Trade], capital : float):
+        trades = self._process_trade_history(history, capital)
+
+        # Store Trade Earnings. 'date' is not required; Index is trade count
+        self.earnings_trades[id] = trades['earnings'].to_numpy()
 
         # PNL
         net_profit = trades['profit'].sum()         # Net Profit
@@ -210,9 +243,18 @@ class AutoReporter:
 
 
     def _compute_portfolio_metrics(self, id:str, portfolio:Portfolio, smart:bool=True):
-        portfolio = self._prepare_portfolio(portfolio)
+        records = self._prepare_portfolio(portfolio)
+        portfolio = records['returns']
+
+        # Store Portfolio Earinings
+        self.earnings_portfolio[id] = records['earnings'].to_numpy()
         
-        # METRICS
+        # Add 'date' columns as index, if it does not exist
+        if 'date' not in self.earnings_portfolio.keys():
+            self.earnings_portfolio['date'] = records['date'].to_numpy()
+        
+
+        # CALCULATE METRICS
         metrics_data = {
             'sharpe_ratio' : qs.stats.sharpe(portfolio, smart=smart),
             'cagr' : qs.stats.cagr(portfolio),
@@ -253,15 +295,21 @@ class AutoReporter:
 
     def _prepare_portfolio(self, portfolio : Portfolio):        
         # Extract Returns From Portfolio
-        data = portfolio.dataframe['equity'].pct_change()
-
+        data = portfolio.dataframe[['timestamp', 'equity']].copy(deep=True)
+        data.loc[:, ['returns']] = data['equity'].pct_change()
+        data['returns'].fillna(0)
+        
         # Add and Rename Index to Date; Remove Timezone
         data.index = portfolio.dataframe['timestamp']
-        data.index.name = 'Date'
-        return data
+        data.index.name = 'date'
+
+        # Rename 'equity' to 'earnings', and 'timestamp' to 'date'
+        data.rename(columns={'equity' : 'earnings', 'timestamp' : 'date'}, inplace=True)
+
+        return data[['date', 'earnings', 'returns']]
 
 
-    def _process_trade_history(self, history : list[Trade]):
+    def _process_trade_history(self, history : list[Trade], capital : float):
     
         """
         Compute and return a trades report including all trades and trades per ticker.
@@ -325,6 +373,7 @@ class AutoReporter:
         trades['entry_timestamp'] = pd.to_datetime(trades['entry_timestamp'])
         trades['exit_timestamp'] = pd.to_datetime(trades['exit_timestamp'])
         trades['duration'] = trades['exit_timestamp'] - trades['entry_timestamp']
+        trades['earnings'] = capital + trades['cumm_profit']
 
         trades.index = trades.entry_timestamp
         trades.index.name = 'date'
@@ -333,10 +382,61 @@ class AutoReporter:
         # Return the overall trades DataFrame and the dictionary of trades per ticker
         return trades
     
+
+    def plot_equity_curves(self, highlight=None, highlight_message=None):
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+
+        for key, values in self.earnings.items():
+            color = 'orange' if key == 'original' else 'gray'
+            alpha = 0.5 if key != highlight else 1.0
+            label = key if key == 'original' else None
+
+            ax.plot(np.arange(len(values)), values, color=color, alpha=alpha, label=label)
+
+        if highlight and highlight in self.earnings:
+            ax.plot(np.arange(len(self.earnings[highlight])), self.earnings[highlight], color='blue', label=highlight)
+
+        if highlight_message:
+            ax.text(0.5, 0.9, highlight_message, color='blue', transform=ax.transAxes, ha='center', va='center')
+
+        ax.legend()
+        plt.show()
+
+
+    def plot_backtests(self, highlight=None, highlight_message=None):
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+
+        for column in self.earnings.columns:
+            if column == 'original':
+                color = 'orange'
+                label = 'Original'
+            elif column == highlight:
+                color = 'blue'
+                label = highlight_message if highlight_message else None
+            else:
+                color = 'gray'
+                label = None
+
+            fig.add_trace(go.Scatter(x=list(range(len(self.earnings[column]))), y=self.earnings[column], mode='lines', name=label, line=dict(color=color, width=2), text=label))
+
+        fig.update_layout(title='Backtest Equity Curves',
+                        xaxis_title='Time',
+                        yaxis_title='Equity',
+                        legend=dict(orientation='h'),
+                        showlegend=False)
+
+        fig.show()
+
+
     # PICKLE-COMPATIBILITY
     def __getstate__(self):
         state = self.__dict__.copy()
         return state
+
 
     def __setstate__(self, state):
         # Customize the object reconstruction
