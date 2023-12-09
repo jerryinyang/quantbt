@@ -187,7 +187,6 @@ if __name__ == '__main__':
     
     from alpha import BaseAlpha
     from dataloader import DataLoader
-    from reporters import Reporter  # noqa: F401
     from utils import clear_terminal
 
     

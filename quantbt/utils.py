@@ -145,7 +145,7 @@ class ObservableList(list):
 
     # To be called when olist is updated
     def _on_update(self, changed_object):
-        if self._callback:
+        if hasattr(self, '_callback') and self._callback:
             self._callback(changed_object)
 
 
@@ -174,7 +174,7 @@ class ObservableDict(dict):
 
     # To be called when olist is updated
     def _on_update(self, changed_object):
-        if self._callback:
+        if hasattr(self, '_callback') and self._callback:
             self._callback(changed_object)
 
 

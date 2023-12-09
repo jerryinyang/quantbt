@@ -1,25 +1,26 @@
-import logging
+import pickle
 import pandas as pd
+# import zstandard as zstd
+
 from typing import List
+from copy import deepcopy
+from pathlib import Path
+import uuid
 
 from engine import Engine
 from alpha import Alpha
 from orders import Order
-from portfolio import Portfolio # noqa: F401
 from dataloader import DataLoader
 from sizers import Sizer
 from utils import Bar, debug, Logger # noqa: F401
-from copy import deepcopy
-
-logging.basicConfig(filename='logs.log', level=logging.INFO)
 
 exectypes = Order.ExecType
 
 class Backtester:
     _original_dfs : dict[pd.DataFrame] = None
-
     logger = Logger('logger_backtester')
-
+    backtest_storage_path = Path('data/backtests')
+    
     def __init__(self, 
                  dataloader : DataLoader, 
                  engine : Engine, 
@@ -27,6 +28,7 @@ class Backtester:
                  max_allocation : float,
                  analysis_mode : bool = False) -> None:
         
+        self.id = str(uuid.uuid4())
         self.datas = dataloader
         self.engine = engine
 
@@ -171,7 +173,6 @@ if __name__ == '__main__':
     import yfinance as yf
     import pandas as pd
     import os
-    import pickle  # noqa: F401
     
     from alpha import BaseAlpha
     from dataloader import DataLoader
@@ -186,7 +187,7 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL'] #, 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
+    tickers = ['AAPL', 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
     ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
@@ -211,15 +212,13 @@ if __name__ == '__main__':
 
     backtester = Backtester(dataloader, engine, alpha, 1)
 
-    # backtester.add_alpha(alpha)
-
     trades = backtester.backtest()
 
-    # portfolio.dataframe.to_parquet('final_portfolio.parquet')
+    # Use Reporter
+    reporter = AutoReporter('full')
+    reporter.compute_report(backtester)
+    reporter.compute_report(backtester)
 
-    # Use Reported
-    # reporter = AutoReporter(trades)
-
-    # # Pickle the instance
-    # with open('reporter.pkl', 'wb') as file:
-    #     pickle.dump(reporter, file)
+    # Pickle the instance
+    with open('reporter.pkl', 'wb') as file:
+        pickle.dump(reporter, file)
