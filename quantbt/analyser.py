@@ -1,15 +1,17 @@
-import random
 import pandas as pd
 import numpy as np 
-import concurrent.futures 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from backtester import Backtester
+from reporters import AutoReporter
 
 from engine import Engine
-from copy import deepcopy, copy
+from copy import deepcopy, copy # noqa
+from tqdm import tqdm
 
 
 class Analyser:
+
     def __init__(self, backtester:Backtester) -> None:
         '''
         This class embodies the analyst performing series of backtests.
@@ -19,7 +21,7 @@ class Analyser:
         assert backtester.alphas, ValueError('Backtester must have at least one alpha to be analyzed.')
 
         self.backtester = backtester
-
+        self.reporter = AutoReporter()
 
     def analyse_robustness_price(self, iterations:int, synthesis_mode : float | str='perturb', noise_factor : float = 1):
         '''
@@ -35,21 +37,22 @@ class Analyser:
         elif str(synthesis_mode) in ['permute', '1']:
             synthesizer = self.synthesize_price_permute
         else:
-            self.logger.warn(f'Invalid `synthesis_mode` value passed ({synthesis_mode}). It would be randomly selected for each iteration.')
-            synthesizer = None
+            synthesizer = self.synthesize_price_perturb
 
-        # Store backtest results, contains trade history list for each backtest iteration
-        analysis_history = []
+        # Create multiple processes for the backtests
+        with ProcessPoolExecutor() as executor:
+            futures = [executor.submit(self._iter_robustness_price, synthesizer, noise_factor) for _ in range(iterations+1)]
+            kwargs = {
+                'ascii' : "░▒█" ,
+                'total': len(futures),
+                'unit': 'it',
+                'unit_scale': True,
+                'leave': True # Leave the Bar in the terminal when completed
+            }
+            # using tqdm to track progress
+            [self.reporter.compute_report(future.result()) for future in tqdm(as_completed(futures), **kwargs)]
 
-        with concurrent.futures.ProcessPoolExecutor() as executor:  # Use ProcessPoolExecutor here
-            futures = [executor.submit(self._iter_robustness_price, synthesizer, noise_factor) for _ in range(iterations)]
-            concurrent.futures.wait(futures)
-            analysis_history = [future.result() for future in futures]
-        
-        # # Sequential execution without concurrency
-        # analysis_history = [self._iter_robustness_price(synthesizer, noise_factor) for _ in range(iterations)]
-
-        return analysis_history
+        print('Analysis Completed.')
     
 
     def synthesize_price_permute(self, _data:pd.DataFrame, scale_factor : float):
@@ -156,9 +159,6 @@ class Analyser:
 
 
     def _iter_robustness_price(self, synthesizer, noise_factor):
-        # Randomily pick synthesizer if it is not specified
-        if not synthesizer:
-            synthesizer =  random.choice([self.synthesize_price_permute, self.synthesize_price_perturb])
 
         # Modify backtester.engine.dataframes 
         dataframes = deepcopy(self.backtester.original_dataframes)
@@ -175,21 +175,32 @@ class Analyser:
         backtester.reset_backtester(dataframes)
 
         # Run backtest
-        trade_history = self.backtester.backtest(analysis_mode=True)
+        backtester.backtest(analysis_mode=True)
 
-        return trade_history
+        return backtester
     
+
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
+
+
 
 if __name__ == '__main__':
     import yfinance as yf
     import pandas as pd
     import os
+    import pickle
     
     from alpha import BaseAlpha
     from dataloader import DataLoader
     from utils import clear_terminal
-
-    
 
     start_date = '2020-01-02'
     end_date = '2023-12-31'
@@ -198,7 +209,7 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL'] #, 'GOOG', 'TSLA']
+    tickers = ['AAPL', 'GOOG', 'TSLA']
     ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
 
     dfs = []
@@ -225,4 +236,8 @@ if __name__ == '__main__':
     # trade_history = backtester.backtest()
 
     analyser = Analyser(backtester)
-    data = analyser.analyse_robustness_price(50, 'perturb', 0.01)
+    data = analyser.analyse_robustness_price(1000, 'perturb', 0.01)
+
+    # Pickle the instance
+    with open('reporter.pkl', 'wb') as file:
+        pickle.dump(analyser.reporter, file)

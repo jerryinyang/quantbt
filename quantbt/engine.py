@@ -607,3 +607,12 @@ class Engine:
             observer.update(trade)
         return trade
 
+
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)

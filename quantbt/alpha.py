@@ -172,6 +172,15 @@ class Alpha(Observer, ABC):
                 self.close_trade(trade, bar, price)
 
 
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
+
 class BaseAlpha(Alpha):
     def __init__(self, name : str, engine: Engine, profit_perc:float, loss_perc:float) -> None:
         super().__init__(name, engine)

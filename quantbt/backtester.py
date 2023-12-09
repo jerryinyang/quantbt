@@ -1,4 +1,4 @@
-import pickle
+import pickle # noqa
 import pandas as pd
 # import zstandard as zstd
 
@@ -169,6 +169,16 @@ class Backtester:
         self._original_dfs = dataframes
 
 
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
+
+
 if __name__ == '__main__':
     import yfinance as yf
     import pandas as pd
@@ -214,11 +224,13 @@ if __name__ == '__main__':
 
     trades = backtester.backtest()
 
-    # Use Reporter
-    reporter = AutoReporter('full')
-    reporter.compute_report(backtester)
-    reporter.compute_report(backtester)
+    # # Use Reporter
+    # reporter = AutoReporter('full')
+    # reporter.compute_report(backtester)
+    # reporter.compute_report(backtester)
 
-    # Pickle the instance
-    with open('reporter.pkl', 'wb') as file:
-        pickle.dump(reporter, file)
+    # # Pickle the instance
+    # with open('reporter.pkl', 'wb') as file:
+    #     pickle.dump(reporter, file)
+
+    

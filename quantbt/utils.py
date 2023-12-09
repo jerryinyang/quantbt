@@ -1,13 +1,7 @@
-from datetime import datetime  # , timedelta
+from datetime import datetime 
 import logging
 import os
-# import math
 from bisect import bisect_right
-
-# from enum import Enum
-# import re
-# from typing import Any
-
 
 class Bar:
     def __init__(
@@ -77,6 +71,15 @@ class Bar:
         - bool: True if the price is within the bar, False otherwise.
         """
         return self.high >= price >= self.low
+    
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
 
 
 class LogFormatter(logging.Formatter):
@@ -107,6 +110,7 @@ class Logger(logging.Logger):
 
         # Add the handler to the logger
         self.addHandler(custom_handler)
+        
 
 
 class ObservableList(list):
@@ -148,6 +152,15 @@ class ObservableList(list):
         if hasattr(self, '_callback') and self._callback:
             self._callback(changed_object)
 
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
+
 
 class ObservableDict(dict):
     def __init__(self, callback, *args, **kwargs):
@@ -176,6 +189,15 @@ class ObservableDict(dict):
     def _on_update(self, changed_object):
         if hasattr(self, '_callback') and self._callback:
             self._callback(changed_object)
+
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
 
 
 

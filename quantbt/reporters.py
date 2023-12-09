@@ -66,8 +66,8 @@ class AutoReporter:
             ]
 
         # Compute Trade and Portfolio Metrics
-        metrics_portfolio = self.compute_portfolio_metrics(id, portfolio, smart)
-        metrics_trades = self.compute_trade_metrics(id, history)
+        metrics_portfolio = self._compute_portfolio_metrics(id, portfolio, smart)
+        metrics_trades = self._compute_trade_metrics(id, history)
 
         # Merge Metrics, Reset Index
         metrics = pd.merge(metrics_portfolio, metrics_trades, left_index=True, right_index=True)
@@ -80,7 +80,7 @@ class AutoReporter:
         return metrics[columns]
         
 
-    def compute_trade_metrics(self, id:str, history : list[Trade]):
+    def _compute_trade_metrics(self, id:str, history : list[Trade]):
         trades = self._process_trade_history(history)
 
         # PNL
@@ -209,7 +209,7 @@ class AutoReporter:
         return metrics
 
 
-    def compute_portfolio_metrics(self, id:str, portfolio:Portfolio, smart:bool=True):
+    def _compute_portfolio_metrics(self, id:str, portfolio:Portfolio, smart:bool=True):
         portfolio = self._prepare_portfolio(portfolio)
         
         # METRICS
@@ -332,4 +332,13 @@ class AutoReporter:
 
         # Return the overall trades DataFrame and the dictionary of trades per ticker
         return trades
+    
+    # PICKLE-COMPATIBILITY
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        # Customize the object reconstruction
+        self.__dict__.update(state)
     
