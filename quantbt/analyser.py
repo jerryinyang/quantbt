@@ -60,64 +60,6 @@ class Analyser:
         print('Analysis Completed.')
     
 
-    def synthesize_price_permute(self, _data:pd.DataFrame, scale_factor : float):
-        """
-        Generate synthetic price data based on permutations of original data.
-
-        Parameters:
-        _data (pd.DataFrame): Input dataframe containing financial data.
-
-        Returns:
-        pd.DataFrame: DataFrame with synthetic price data.
-        """ 
-
-        # Check if 'close' column is present in the dataframe
-        assert 'close' in _data.columns, ValueError("Missing required `close` column in dataframe.")
-        
-        # Create a copy of the input data
-        data = _data.copy()
-
-        # Compute Percentage Changes
-        change_close = data['close'].pct_change()
-        change_close = change_close.fillna(change_close.mean())
-
-        # Compute the gap between open and previous close
-        open_gap = data['open'] - data['close'].shift(1).fillna(data['close'])
-
-        # Compute the difference between high and maximum of open and close
-        high_bodyhigh_diff = data['high'] - data[['open', 'close']].max(axis=1)
-        
-        # Compute the difference between minimum of open and close and low
-        low_bodylow_diff = data[['open', 'close']].min(axis=1) - data['low']
-
-        # Permute Percentage Changes and Gaps
-        change_close = np.random.permutation(change_close) * scale_factor
-        open_gap = np.random.permutation(open_gap) * scale_factor
-        high_bodyhigh_diff = np.random.permutation(high_bodyhigh_diff) * scale_factor
-        low_bodylow_diff = np.random.permutation(low_bodylow_diff) * scale_factor
-
-        # Create a synthetic dataframe
-        synth = pd.DataFrame()
-
-        # Generate synthetic 'close' prices
-        synth['close'] = data['close'].shift(1).fillna(data['close']) * (1 + change_close)
-        
-        # Generate synthetic 'open' prices
-        synth['open'] = data['close'].shift(1).fillna(data['close']) + open_gap
-        synth['close'] = synth['close'].fillna(synth['open'] * 1.01)
-        synth['open'] = synth['open'].fillna(data['close'] + open_gap.mean())
-
-        # Generate synthetic 'high' and 'low' prices
-        synth['high'] = synth[['open', 'close']].max(axis=1) + high_bodyhigh_diff
-        synth['low'] = synth[['open', 'close']].min(axis=1) - low_bodylow_diff
-        
-
-        data[['open', 'high', 'low', 'close']] = synth[['open', 'high', 'low', 'close']]
-
-        # Return selected columns of the synthetic dataframe
-        return data
-        
-
     def synthesize_price_perturb(self, _data:pd.DataFrame, noise_factor:float):
 
         """
