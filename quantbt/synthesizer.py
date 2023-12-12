@@ -33,9 +33,18 @@ class GBM:
     def synthesize(self):
         # Assign default data, if not assigned
         data = self.data['close']
+
+        high_max_diff = self.data.apply(lambda row: abs(row['high'] - max(row['open'], row['close'])), axis=1)
+        low_min_diff = self.data.apply(lambda row: abs(row['low'] - min(row['open'], row['close'])), axis=1)
+
+        # Add a small check to avoid division by zero
+        high_max_diff = high_max_diff.where(high_max_diff != 0, 1e-6)
+        low_min_diff = low_min_diff.where(low_min_diff != 0, 1e-6)
         
         # Get Initial Price
         initial_price = data.iloc[0]
+        initial_hmd = high_max_diff.iloc[0]
+        initial_lmd = low_min_diff.iloc[0]
         
         # Set length
         length = self.length
@@ -43,6 +52,12 @@ class GBM:
         # Calculate returns from the input data
         returns = data.pct_change()
         returns = returns.fillna(0)
+
+        returns_hmd = high_max_diff.pct_change()
+        returns_hmd = returns_hmd.fillna(0)
+
+        returns_lmd = low_min_diff.pct_change()
+        returns_lmd = returns_lmd.fillna(0)
 
         # Calculate drift (mu) and volatility (sigma) from historical returns
         mu = returns.mean()
@@ -148,31 +163,16 @@ class GBM:
             jump = 0
 
         return jump
-
-
-    def pct_change(self, values):
-        # Convert the list to a NumPy array
-        values_array = np.array(values)
-        
-        # Use the diff method to calculate the difference between consecutive values
-        differences = np.diff(values_array)
-        
-        # Use the divide method to calculate the percentage change
-        percentage_changes = (differences / values_array[:-1]) * 100
-        
-        # Insert 0 at the beginning to account for the first value having no previous value
-        percentage_changes = np.insert(percentage_changes, 0, 0)
-        
-        return percentage_changes.tolist()
-
+    
 
 if __name__ == '__main__':
+
     clear_terminal()
 
     data = pd.read_csv('/Users/jerryinyang/Code/quantbt/data/prices/AAPL.csv')
 
     gbm = GBM(data, add_jump=False)
 
-    x = gbm.forecast(14, 14)
+    x = gbm.synthesize()
 
     x.to_csv('/Users/jerryinyang/Code/quantbt/quantbt/x.csv')
