@@ -33,18 +33,9 @@ class GBM:
     def synthesize(self):
         # Assign default data, if not assigned
         data = self.data['close']
-
-        high_max_diff = self.data.apply(lambda row: abs(row['high'] - max(row['open'], row['close'])), axis=1)
-        low_min_diff = self.data.apply(lambda row: abs(row['low'] - min(row['open'], row['close'])), axis=1)
-
-        # Add a small check to avoid division by zero
-        high_max_diff = high_max_diff.where(high_max_diff != 0, 1e-6)
-        low_min_diff = low_min_diff.where(low_min_diff != 0, 1e-6)
         
         # Get Initial Price
         initial_price = data.iloc[0]
-        initial_hmd = high_max_diff.iloc[0]
-        initial_lmd = low_min_diff.iloc[0]
         
         # Set length
         length = self.length
@@ -52,12 +43,6 @@ class GBM:
         # Calculate returns from the input data
         returns = data.pct_change()
         returns = returns.fillna(0)
-
-        returns_hmd = high_max_diff.pct_change()
-        returns_hmd = returns_hmd.fillna(0)
-
-        returns_lmd = low_min_diff.pct_change()
-        returns_lmd = returns_lmd.fillna(0)
 
         # Calculate drift (mu) and volatility (sigma) from historical returns
         mu = returns.mean()
@@ -80,7 +65,7 @@ class GBM:
     
         # Set initial values
         new_data['close'] = new_prices
-        new_data['open'] = new_data['close'].shift().fillna(new_data['close'])
+        new_data['open'] = new_data['close'].shift().fillna(new_data['close']) 
         new_data['high'] = new_data[['open', 'close']].max(axis=1)
         new_data['low'] = new_data[['open', 'close']].min(axis=1)
 
@@ -165,14 +150,25 @@ class GBM:
         return jump
     
 
+class Noise:
+    def __init__(self) -> None:
+        pass
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
 
     clear_terminal()
 
     data = pd.read_csv('/Users/jerryinyang/Code/quantbt/data/prices/AAPL.csv')
 
+    np.random.seed(42)
     gbm = GBM(data, add_jump=False)
-
     x = gbm.synthesize()
 
     x.to_csv('/Users/jerryinyang/Code/quantbt/quantbt/x.csv')
