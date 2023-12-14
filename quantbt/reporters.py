@@ -1,8 +1,7 @@
+import threading
 import pandas as pd
 import numpy as np
 import quantstats as qs
-
-from typing import List, Dict, Union # noqa : F401
 
 from trades import Trade
 from portfolio import Portfolio
@@ -19,6 +18,12 @@ class AutoReporter:
         
         self.earnings_trades = {}
         self.earnings_portfolio = {}
+
+        # Locks for thread safety
+        self.metrics_lock = threading.Lock()
+        self.earnings_trades_lock = threading.Lock()
+        self.earnings_portfolio_lock = threading.Lock()
+
 
     def compute_report(self, backtester : Backtester, smart:bool=True):
         # Get Necessary Data
@@ -81,8 +86,9 @@ class AutoReporter:
         metrics.reset_index(inplace=True)
         metrics.rename(columns={'index': 'id'}, inplace=True)
 
-        # Append new row into self.reports
-        self.metrics = pd.concat([self.metrics, metrics[columns]], ignore_index=True)
+        # Append new row into self.reports; Use locks for thread safety
+        with self.metrics_lock:
+            self.metrics = pd.concat([self.metrics, metrics[columns]], ignore_index=True)
 
         return metrics[columns]
     
@@ -113,8 +119,12 @@ class AutoReporter:
     def _compute_trade_metrics(self, id:str, history : list[Trade], capital : float):
         trades = self._process_trade_history(history, capital)
 
+        # Check for NaN and inf values and replace with defaults
+        trades.replace([np.inf, -np.inf, np.nan], 0, inplace=True)
+
         # Store Trade Earnings. 'date' is not required; Index is trade count
-        self.earnings_trades[id] = trades['earnings'].to_numpy()
+        with self.earnings_trades_lock:
+            self.earnings_trades[id] = trades['earnings'].to_numpy()
 
         # PNL
         net_profit = trades['profit'].sum()         # Net Profit
@@ -123,6 +133,7 @@ class AutoReporter:
         average_pnl = trades['profit'].mean() # Avg Trade
         average_profit = trades[(trades['profit'] > 0)]['profit'].mean() # Avg Winning Trade
         average_loss = trades[(trades['profit'] < 0)]['profit'].mean() # Avg Losing Trade
+
         largest_profit = trades[(trades['profit'] > 0)]['profit'].max() # Largest Winning Trade
         largest_loss = trades[(trades['profit'] < 0)]['profit'].min() # Largest Losing Trade
 
@@ -136,19 +147,19 @@ class AutoReporter:
         largest_profit_percent = trades[(trades['profit_percent'] > 0)]['profit_percent'].max() # Largest Winning Trade
         largest_loss_percent = trades[(trades['profit_percent'] < 0)]['profit_percent'].min() # Largest Losing Trade
 
-        profit_factor = gross_profit / abs(gross_loss) # Profit Factor
+        profit_factor = gross_profit / abs(gross_loss) if gross_loss != 0 else 1 # Profit Factor
         total_closed_trades = len(trades) # Total Closed Trades
         count_profit = len(trades[trades['profit'] > 0]) # Number Winning Trades
         count_loss = len(trades[trades['profit'] < 0]) # Number Losing Trades
         count_breakeven = len(trades[trades['profit'] == 0]) # Number Breakeven Trades
         win_rate = (count_profit / total_closed_trades) * 100 # Percent Profitable
-        payoff_ratio = average_profit / abs(average_loss) # Ratio Avg Win / Avg Loss
+        payoff_ratio = average_profit / abs(average_loss) if average_loss != 0 else 1 # Ratio Avg Win / Avg Loss
         average_duration = trades['duration'].mean().total_seconds() # Avg Duration in Trades
-        average_duration_winning = pd.to_timedelta(trades[(trades['profit'] > 0)]['duration'].mean().total_seconds(), unit='s') # Avg Duration in Winning Trades
-        average_duration_losing = pd.to_timedelta(trades[(trades['profit'] < 0)]['duration'].mean().total_seconds(), unit='s')  # Avg Duration in Losing history
+        average_duration_winning = trades[(trades['profit'] > 0)]['duration'].mean().total_seconds() # Avg Duration in Winning Trades
+        average_duration_losing = trades[(trades['profit'] < 0)]['duration'].mean().total_seconds()  # Avg Duration in Losing history
 
         # Calculate Maximum Consecutive Wins and Losses
-        trades['streak'] = (trades['profit'] >= 0).astype(int)
+        trades['streak'] = np.where(trades['profit'] >= 0, 1, 0)
         groups = trades['streak'].ne(trades['streak'].shift()).cumsum()
         streak_lengths = trades.groupby(groups)['streak'].transform('count')
 
@@ -183,7 +194,6 @@ class AutoReporter:
             'largest_loss_percent': [largest_loss_percent],
 
             # STATISTICS
-
             'max_runup': [max_runup], 
             'max_runup_percent': [max_runup_percent], 
             'max_drawdown': [max_drawdown], 
@@ -204,6 +214,9 @@ class AutoReporter:
         }
 
         metrics = pd.DataFrame(metrics_data, index=[id])
+
+        # Check for NaN and inf values and replace with defaults
+        metrics.replace([np.inf, -np.inf, np.nan], 0, inplace=True)
 
         # Set the columns datatypes
         metrics = metrics.astype({
@@ -246,12 +259,13 @@ class AutoReporter:
         records = self._prepare_portfolio(portfolio)
         portfolio = records['returns']
 
-        # Store Portfolio Earinings
-        self.earnings_portfolio[id] = records['earnings'].to_numpy()
+       # Store Portfolio Earnings
+        with self.earnings_portfolio_lock:
+            self.earnings_portfolio[id] = records['earnings'].to_numpy()
         
-        # Add 'date' columns as index, if it does not exist
-        if 'date' not in self.earnings_portfolio.keys():
-            self.earnings_portfolio['date'] = records['date'].to_numpy()
+            # Add 'date' columns as index, if it does not exist
+            if 'date' not in self.earnings_portfolio.keys():
+                self.earnings_portfolio['date'] = records['date'].to_numpy()
         
 
         # CALCULATE METRICS
@@ -374,6 +388,7 @@ class AutoReporter:
         trades['exit_timestamp'] = pd.to_datetime(trades['exit_timestamp'])
         trades['duration'] = trades['exit_timestamp'] - trades['entry_timestamp']
         trades['earnings'] = capital + trades['cumm_profit']
+        trades['profit'].replace([np.nan, np.inf, -np.inf], 0, inplace=True)
 
         trades.index = trades.entry_timestamp
         trades.index.name = 'date'
@@ -431,10 +446,12 @@ class AutoReporter:
 
         fig.show()
 
-
     # PICKLE-COMPATIBILITY
     def __getstate__(self):
         state = self.__dict__.copy()
+        del state['metrics_lock']
+        del state['earnings_trades_lock']
+        del state['earnings_portfolio_lock']
         return state
 
 

@@ -1,7 +1,8 @@
 import pandas as pd
-import numpy as np 
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import Union
 
+import synthesizers as synth
 from backtester import Backtester
 from reporters import AutoReporter
 
@@ -23,7 +24,7 @@ class Analyser:
         self.backtester = backtester
 
 
-    def analyse_robustness_price(self, reporter : AutoReporter, iterations:int, synthesis_mode : float | str='perturb', noise_factor : float = 1):
+    def analyse_robustness_price(self, reporter : AutoReporter, iterations:int, synthesis_mode : float | str='perturb', **args):
         '''
         For this analysis, synthetic OHLCV data is created by modifying the actual backtest data. 
         Then, the backtest is run `n` times, and the performance metrics are recalculated and compared.
@@ -32,16 +33,17 @@ class Analyser:
         # Pick the synthesizer
         synthesis_mode = str(synthesis_mode)
 
-        if str(synthesis_mode) in ['noise', 'perturb', '0']:
-            synthesizer = self.synthesize_price_perturb
-        elif str(synthesis_mode) in ['permute', '1']:
-            synthesizer = self.synthesize_price_permute
+        if str(synthesis_mode) in ['noise', 'perturb']:
+            synthesizer = synth.Noise(**args)
+
+        elif str(synthesis_mode) in ['new', 'forecast', 'gbm']:
+            synthesizer = synth.GBM(**args)
         else:
-            synthesizer = self.synthesize_price_perturb
+            synthesizer = synth.Noise(**args)
 
         # Create multiple processes for the backtests
         with ProcessPoolExecutor() as executor:
-            futures = [executor.submit(self._iter_robustness_price, synthesizer, noise_factor) for _ in range(iterations+1)]
+            futures = [executor.submit(self._iter_robustness_price, synthesizer) for _ in range(iterations+1)]
             kwargs = {
                 'ascii' : "░▒█" ,
                 'total': len(futures),
@@ -49,70 +51,26 @@ class Analyser:
                 'unit_scale': True,
                 'leave': True # Leave the Bar in the terminal when completed
             }
+
             # using tqdm to track progress
             [reporter.compute_report(future.result()) for future in tqdm(as_completed(futures), **kwargs)]
 
-            # Run strategy with Original Backtester
-            self.backtester.id = 'original'
-            self.backtester.backtest(analysis_mode=True)
-            reporter.compute_report(self.backtester)
+        # Run strategy with Original Backtester
+        self.backtester.id = 'original'
+        self.backtester.backtest(analysis_mode=True)
+        reporter.compute_report(self.backtester)
 
         print('Analysis Completed.')
     
 
-    def synthesize_price_perturb(self, _data:pd.DataFrame, noise_factor:float):
-
-        """
-        Generate synthetic price data with added noise based on the original data.
-
-        Parameters:
-        _data (pd.DataFrame): Input dataframe containing financial data.
-        noise_factor (float): Factor to control the amount of noise added to the data.
-
-        Returns:
-        pd.DataFrame: DataFrame with synthetic price data including noise.
-        """
-
-        # Keep the original columns
-        columns = _data.columns
-
-        # Create a copy of the input data
-        data = _data.copy()
-
-        # Compute Percentage Changes and Gaps
-        change_close = data['close'].pct_change()
-        open_gap = data['open'] - data['close'].shift(1).fillna(0)
-
-        # Fill missing values and add normal noise based on the noise factor
-        change_close = change_close.fillna(change_close.mean())
-        change_close = np.random.normal(
-            change_close.mean(),
-            change_close.std(),
-            len(change_close)
-        )
-        change_close = self.add_noise(change_close, noise_factor)
-
-        # Generate synthetic 'close' and 'open' prices with added noise
-        data['close'] = data['close'] * (1 + change_close)
-        data['open'] = data['close'] + open_gap
-
-        # Return the dataframe with synthetic prices including noise
-        return data[columns]
-    
-
-    def add_noise(self, series, percentage):
-        noise = (np.random.random(size=series.shape) - 0.5) * percentage * 2
-        return series + series * noise
-
-
-    def _iter_robustness_price(self, synthesizer, noise_factor):
+    def _iter_robustness_price(self, synthesizer : Union[synth.GBM, synth.Noise]):
 
         # Modify backtester.engine.dataframes 
         dataframes = deepcopy(self.backtester.original_dataframes)
         
         # Synthesize new data
         for ticker, ticker_data in dataframes.items():
-            new_data = synthesizer(ticker_data, noise_factor)
+            new_data = synthesizer.synthesize(ticker_data)
             dataframes[ticker] = new_data
 
         # Get a copy of self.backtester, unique for each iteration
@@ -141,7 +99,6 @@ class Analyser:
 
 if __name__ == '__main__':
     import yfinance as yf
-    import pandas as pd
     import os
     import pickle
     
@@ -179,12 +136,12 @@ if __name__ == '__main__':
     engine = Engine(dataloader)
     alpha = BaseAlpha('base_alpha', engine, .1, .05)
 
-    backtester = Backtester(dataloader, engine, alpha, 1 )
+    backtester = Backtester(dataloader, engine, alpha, 1)
 
     reporter = AutoReporter(returns_mode='full')
 
     analyser = Analyser(backtester)
-    data = analyser.analyse_robustness_price(reporter, 50, 'perturb', 0.01)
+    data = analyser.analyse_robustness_price(reporter, 100, 'gbm')
 
     # Pickle the instance
     with open('1000.pkl', 'wb') as file:
