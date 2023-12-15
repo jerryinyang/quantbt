@@ -1,18 +1,18 @@
+import uuid
 import pickle # noqa
 import pandas as pd
 # import zstandard as zstd
 
 from typing import List
-from copy import deepcopy
+from copy import deepcopy, copy
 from pathlib import Path
-import uuid
 
 from engine import Engine
 from alpha import Alpha
 from orders import Order
 from dataloader import DataLoader
 from sizers import Sizer
-from utils import Bar, debug, Logger # noqa: F401
+from utils import Bar, Logger # noqa: F401
 
 exectypes = Order.ExecType
 
@@ -158,6 +158,18 @@ class Backtester:
                  self.alphas, 
                  self.max_allocation,
                  True)
+
+
+    def copy(self, deep:bool=False):
+        # Regenerate 
+
+        # Create a copy 
+        backtester = deepcopy(self) if deep else copy(self)
+
+        # Reset Backtester ID
+        backtester.id = str(uuid.uuid4())
+
+        return backtester
 
 
     @property

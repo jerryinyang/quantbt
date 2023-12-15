@@ -1,3 +1,4 @@
+import random
 import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Union
@@ -24,6 +25,7 @@ class Analyser:
         self.backtester = backtester
 
 
+    # ROBUSTNESS TO PRICE DATA
     def analyse_robustness_price(self, reporter : AutoReporter, iterations:int, synthesis_mode : float | str='perturb', **args):
         '''
         For this analysis, synthetic OHLCV data is created by modifying the actual backtest data. 
@@ -43,7 +45,7 @@ class Analyser:
 
         # Create multiple processes for the backtests
         with ProcessPoolExecutor() as executor:
-            futures = [executor.submit(self._iter_robustness_price, synthesizer) for _ in range(iterations+1)]
+            futures = [executor.submit(self._iter_price_data, synthesizer) for _ in range(iterations+1)]
             kwargs = {
                 'ascii' : "░▒█" ,
                 'total': len(futures),
@@ -61,9 +63,12 @@ class Analyser:
         reporter.compute_report(self.backtester)
 
         print('Analysis Completed.')
+
+        # Return Dataframe of all backtests and their reports
+        return reporter.report()
     
 
-    def _iter_robustness_price(self, synthesizer : Union[synth.GBM, synth.Noise]):
+    def _iter_price_data(self, synthesizer : Union[synth.GBM, synth.Noise]):
 
         # Modify backtester.engine.dataframes 
         dataframes = deepcopy(self.backtester.original_dataframes)
@@ -74,7 +79,7 @@ class Analyser:
             dataframes[ticker] = new_data
 
         # Get a copy of self.backtester, unique for each iteration
-        backtester = copy(self.backtester)
+        backtester = self.backtester.copy()
 
         # Reset backtester.engine with new dataframes
         backtester.reset_backtester(dataframes)
@@ -84,6 +89,51 @@ class Analyser:
 
         return backtester
     
+
+    # ROUBUSTNESS TO TRADE ORDER
+    def analyse_robustness_trade_order(self, reporter : AutoReporter, iterations:int):
+        '''
+        For this analysis, synthetic OHLCV data is created by modifying the actual backtest data. 
+        Then, the backtest is run `n` times, and the performance metrics are recalculated and compared.
+        '''
+
+        # Run Initial Backtest
+        self.backtester.id = 'original'
+        self.backtester.backtest(analysis_mode=True)
+
+        # Create multiple processes for the backtests
+        with ProcessPoolExecutor() as executor:
+            futures = [executor.submit(self._iter_trade_order, self.backtester) for _ in range(iterations+1)]
+            kwargs = {
+                'ascii' : "░▒█" ,
+                'total': len(futures),
+                'unit': 'it',
+                'unit_scale': True,
+                'leave': True # Leave the Bar in the terminal when completed
+            }
+
+            # using tqdm to track progress
+            [reporter.compute_report(future.result(), analysis_shuffle=True) for future in tqdm(as_completed(futures), **kwargs)]
+
+        print('Analysis Completed.')
+        return reporter.report()
+
+
+    def _iter_trade_order(self, _backtester : Backtester):
+        # Get a copy of the passed backtester, unique for each iteration
+        backtester = _backtester.copy()
+
+        # Make a copy of self.backtester.engine.history
+        history = (backtester.engine.history)
+
+        # Shuffle/Permute the List 
+        random.shuffle(history) # Shuffle the list
+
+        # Reassign the history
+        backtester.engine.history = history
+
+        return backtester
+
 
     # PICKLE-COMPATIBILITY
     def __getstate__(self):
@@ -137,12 +187,13 @@ if __name__ == '__main__':
     alpha = BaseAlpha('base_alpha', engine, .1, .05)
 
     backtester = Backtester(dataloader, engine, alpha, 1)
-
-    reporter = AutoReporter(returns_mode='full')
-
+    reporter = AutoReporter(earnings_mode='trades')
     analyser = Analyser(backtester)
-    data = analyser.analyse_robustness_price(reporter, 100, 'gbm')
+    
+    # Get reports
+    earnings, metrics = analyser.analyse_robustness_trade_order(reporter, 20)
+    
 
     # Pickle the instance
-    with open('1000.pkl', 'wb') as file:
-        pickle.dump(reporter, file)
+    with open('earnings.pkl', 'wb') as file:
+        pickle.dump(earnings, file)

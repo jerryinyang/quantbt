@@ -8,9 +8,28 @@ from portfolio import Portfolio
 from backtester import Backtester
 
 class AutoReporter:
-    def __init__(self, metrics_mode:str = 'basic', returns_mode : str = 'full') -> None:
+    def __init__(self, metrics_mode:str = 'basic', earnings_mode : str = 'full') -> None:
+        """
+        Initialize the AutoReporter.
+
+        Parameters:
+        - metrics_mode (str): Options: 'basic', 'metrics', 'full'. Determines the level of detail in computed metrics.
+        - returns_mode (str): Options: 'trades' | 'trades_only', 'full' | 'portfolio'. Specifies the type of earnings data to be computed.
+
+        Attributes:
+        - metrics_mode (str): The chosen metrics mode.
+        - earnings_mode (str): The chosen returns mode.
+        - metrics (pd.DataFrame): Container for computed metrics.
+        - earnings (pd.DataFrame): Container for computed earnings.
+        - earnings_trades (dict): Dictionary to store trade-specific earnings data.
+        - earnings_portfolio (dict): Dictionary to store portfolio-specific earnings data.
+        - metrics_lock (threading.Lock): Lock for ensuring thread safety when updating metrics.
+        - earnings_trades_lock (threading.Lock): Lock for ensuring thread safety when updating trade earnings.
+        - earnings_portfolio_lock (threading.Lock): Lock for ensuring thread safety when updating portfolio earnings.
+        """
+
         self.metrics_mode = metrics_mode # Options : 'basic', 'metrics', 'full'
-        self.earnings_mode = returns_mode.replace('-','_').replace(' ', '_') # Options : 'trades' | 'trades_only', 'full' | 'portfolio'
+        self.earnings_mode = earnings_mode.replace('-','_').replace(' ', '_') # Options : 'trades' | 'trades_only', 'full' | 'portfolio'
 
         # Containers
         self.metrics = pd.DataFrame()
@@ -24,8 +43,37 @@ class AutoReporter:
         self.earnings_trades_lock = threading.Lock()
         self.earnings_portfolio_lock = threading.Lock()
 
+    
+    def report(self):
+        """
+        Generate and retrieve a report containing both computed metrics and earnings.
+
+        If earnings data is not available, it computes the earnings before generating the report.
+
+        Returns:
+        - Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing the computed earnings and metrics DataFrames.
+        """
+
+        # Check if earnings data is available, compute if not
+        if self.earnings.empty:
+            self.compute_earnings()
+
+        # Return the computed earnings and metrics
+        return self.earnings, self.metrics
+
 
     def compute_report(self, backtester : Backtester, smart:bool=True):
+        """
+        Compute and store the trading performance metrics for a given backtest scenario.
+
+        Parameters:
+        - backtester (Backtester): The Backtester instance containing the backtest results.
+        - smart (bool): Flag to enable smart computation of portfolio metrics.
+
+        Returns:
+        - pd.DataFrame: The computed metrics for the specified mode.
+        """
+
         # Get Necessary Data
         id = backtester.id
         portfolio = backtester.engine.portfolio
@@ -94,6 +142,13 @@ class AutoReporter:
     
     
     def compute_earnings(self):
+        """
+        Compute and store earnings based on the specified earnings mode.
+
+        Returns:
+        - pd.DataFrame: The computed earnings data.
+        """
+
         # If self.earnings_mode is portfolio, 
         # Combine all the columns in a dataframe, with 'date' as the index
         # Assuming self.earnings_portfolio is defined as a dictionary
@@ -112,9 +167,76 @@ class AutoReporter:
             # Create a Pandas DataFrame
             earnings = pd.DataFrame(formatted_data)
 
-
+        # Assign Earnings
         self.earnings = earnings
-    
+        
+        return earnings
+
+
+    def plot_equity_curves(self, highlight=None, highlight_message=None):
+        """
+        Plot equity curves for different backtest scenarios.
+
+        Parameters:
+        - highlight (str): The key of the scenario to highlight.
+        - highlight_message (str): A message to display when highlighting a scenario.
+        """
+
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots()
+
+        for key, values in self.earnings.items():
+            color = 'orange' if key == 'original' else 'gray'
+            alpha = 0.5 if key != highlight else 1.0
+            label = key if key == 'original' else None
+
+            ax.plot(np.arange(len(values)), values, color=color, alpha=alpha, label=label)
+
+        if highlight and highlight in self.earnings:
+            ax.plot(np.arange(len(self.earnings[highlight])), self.earnings[highlight], color='blue', label=highlight)
+
+        if highlight_message:
+            ax.text(0.5, 0.9, highlight_message, color='blue', transform=ax.transAxes, ha='center', va='center')
+
+        ax.legend()
+        plt.show()
+
+
+    def plot_backtests(self, highlight=None, highlight_message=None):
+        """
+        Plot backtest equity curves using Plotly.
+
+        Parameters:
+        - highlight (str): The key of the scenario to highlight.
+        - highlight_message (str): A message to display when highlighting a scenario.
+        """
+        
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+
+        for column in self.earnings.columns:
+            if column == 'original':
+                color = 'orange'
+                label = 'Original'
+            elif column == highlight:
+                color = 'blue'
+                label = highlight_message if highlight_message else None
+            else:
+                color = 'gray'
+                label = None
+
+            fig.add_trace(go.Scatter(x=list(range(len(self.earnings[column]))), y=self.earnings[column], mode='lines', name=label, line=dict(color=color, width=2), text=label))
+
+        fig.update_layout(title='Backtest Equity Curves',
+                        xaxis_title='Time',
+                        yaxis_title='Equity',
+                        legend=dict(orientation='h'),
+                        showlegend=False)
+
+        fig.show()
+
 
     def _compute_trade_metrics(self, id:str, history : list[Trade], capital : float):
         trades = self._process_trade_history(history, capital)
@@ -397,55 +519,7 @@ class AutoReporter:
         # Return the overall trades DataFrame and the dictionary of trades per ticker
         return trades
     
-
-    def plot_equity_curves(self, highlight=None, highlight_message=None):
-        import matplotlib.pyplot as plt
-
-        fig, ax = plt.subplots()
-
-        for key, values in self.earnings.items():
-            color = 'orange' if key == 'original' else 'gray'
-            alpha = 0.5 if key != highlight else 1.0
-            label = key if key == 'original' else None
-
-            ax.plot(np.arange(len(values)), values, color=color, alpha=alpha, label=label)
-
-        if highlight and highlight in self.earnings:
-            ax.plot(np.arange(len(self.earnings[highlight])), self.earnings[highlight], color='blue', label=highlight)
-
-        if highlight_message:
-            ax.text(0.5, 0.9, highlight_message, color='blue', transform=ax.transAxes, ha='center', va='center')
-
-        ax.legend()
-        plt.show()
-
-
-    def plot_backtests(self, highlight=None, highlight_message=None):
-        import plotly.graph_objects as go
-
-        fig = go.Figure()
-
-        for column in self.earnings.columns:
-            if column == 'original':
-                color = 'orange'
-                label = 'Original'
-            elif column == highlight:
-                color = 'blue'
-                label = highlight_message if highlight_message else None
-            else:
-                color = 'gray'
-                label = None
-
-            fig.add_trace(go.Scatter(x=list(range(len(self.earnings[column]))), y=self.earnings[column], mode='lines', name=label, line=dict(color=color, width=2), text=label))
-
-        fig.update_layout(title='Backtest Equity Curves',
-                        xaxis_title='Time',
-                        yaxis_title='Equity',
-                        legend=dict(orientation='h'),
-                        showlegend=False)
-
-        fig.show()
-
+    
     # PICKLE-COMPATIBILITY
     def __getstate__(self):
         state = self.__dict__.copy()
