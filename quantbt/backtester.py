@@ -245,4 +245,3 @@ if __name__ == '__main__':
     with open('reporter.pkl', 'wb') as file:
         pickle.dump(reporter, file)
 
-    
