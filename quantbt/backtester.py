@@ -191,6 +191,7 @@ class Backtester:
         self.__dict__.update(state)
 
 
+
 if __name__ == '__main__':
     import yfinance as yf
     import pandas as pd
