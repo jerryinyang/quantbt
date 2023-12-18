@@ -6,7 +6,6 @@ from observers import Observer
 from trades import Trade
 from utils import Bar, Logger, debug   # noqa: F401
 
-
 from typing import List, Dict
 from abc import ABC, abstractmethod
 
@@ -19,7 +18,6 @@ class Alpha(Observer, ABC):
     params = {
     }
 
-
     def __init__(self, name:str, engine:Engine) -> None:
         '''
         This class handles the creating and sending of orders to the engine
@@ -29,6 +27,9 @@ class Alpha(Observer, ABC):
         Observer.__init__(self, name)
         self.name = name
         self.engine = engine
+
+        # Set Up Warmup Period
+        self.warmup_period = 0
 
         # Store Trades, History
         self.orders : List[Order] = []
@@ -43,6 +44,12 @@ class Alpha(Observer, ABC):
 
 
     @abstractmethod
+    def compute_values(self, datas:Dict[str, Bar]):
+        # Handles strategy's calculations and computations
+        pass
+
+
+    @abstractmethod
     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
         '''
         Update strategy values with Bar objects for each ticker
@@ -54,8 +61,22 @@ class Alpha(Observer, ABC):
 
         # Update the allocations
         self.allocations.update(allocation_per_ticker)
+
+        # Update Warmup
+        if self.warmup_period > 0:
+            
+            # Compute/Update Strategy Values
+            self.compute_values(datas)
+
+            # Reduce teh warmup period
+            self.warmup_period -= 1
+            
+            # Return True for warmup
+            return True
         
-        pass
+        return False
+        
+        
     
 
     @abstractmethod
@@ -254,3 +275,89 @@ class BaseAlpha(Alpha):
 
         self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
+
+
+class EmaCrossover(Alpha):
+    params = {}
+    def __init__(self, name : str, engine: Engine, fast_length : float, slow_length : float) -> None:
+        super().__init__(name, engine)
+
+        self.fast_length = fast_length
+        self.slow_length = slow_length
+
+        self.emas = {}
+
+    def compute_values(self, datas:Dict[str, Bar]):
+        pass
+        
+
+
+    def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
+        super().next(eligibles, datas, allocation_per_ticker)
+
+        # Decision-making / Signal-generating Algorithm
+        alpha_long, alpha_short = self.signal_generator(eligibles)
+        eligible_assets = list(set(alpha_long + alpha_short))
+        
+        for ticker in eligible_assets:
+            bar = datas[ticker]
+
+            # Calculate Risk Amount based on allocation_per_ticker
+            risk_dollars =  self.sizer(bar)
+
+            # Tickers to Long
+            if ticker in alpha_long:
+                entry_price = bar.close
+
+                position_size = risk_dollars / entry_price
+
+                exit_tp = entry_price * (1 + self.profit_perc)
+                exit_sl = entry_price * (1 - self.loss_perc)
+                
+                # Create and Send Long Order
+                self.buy(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
+
+                # Tickers to Short
+            elif ticker in alpha_short:
+                entry_price = bar.close
+                position_size = -1 * risk_dollars / entry_price
+
+                exit_tp = entry_price * (1 - self.profit_perc)
+                exit_sl = entry_price * (1 + self.loss_perc)
+                
+                # Create and Send Short Order
+                self.sell(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
+
+        return alpha_long, alpha_short 
+
+
+    def signal_generator(self, eligibles:list[str]) -> tuple:
+        alpha_scores = { key : np.random.rand() for key in eligibles}
+
+        alpha_scores = {
+            key : value \
+                for key, value in sorted(alpha_scores.items(), key=lambda item : item[1])
+                } # Sorts the dictionary
+        
+        list_scores = list(alpha_scores.keys())
+
+        if not list_scores:
+            return [], []
+        
+        alpha_long = [list_scores[0]] 
+        alpha_short = [list_scores[-1]] 
+
+        return alpha_long, alpha_short       
+
+
+    def reset_alpha(self, engine:Engine):
+        '''
+        Resets the alpha with a new engine.
+        '''
+
+        self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
+        self.logger.info(f'Alpha {self.name} successfully reset.')
+
+
+
+

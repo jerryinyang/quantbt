@@ -200,6 +200,47 @@ class ObservableDict(dict):
         self.__dict__.update(state)
 
 
+class Source:
+    def __init__(self, source : str) -> None:
+        if source.lower() not in ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'hlcc4', 'ohlc4']:
+            UserWarning(f"{source} is not a valid value for the source argument. Defaulting to 'close'.")
+            source = 'close'
+        
+        self.source = source.lower()
+    
+    def __call__(self, bar:Bar) -> float:
+        source = self.source
+
+        if not isinstance(bar, Bar):
+            raise ValueError("Passed 'bar' argument is not a Bar object.")
+        
+        if not isinstance(source, str):
+            raise ValueError("Passed 'source' argument is not valid.")
+        
+        if source in ['open', "Open"]:
+            return bar.open
+        
+        elif source in ['high', 'High']:
+            return bar.high
+        
+        elif source in ['low', 'Low']:
+            return bar.low
+        
+        elif source in ['close', 'Close']:
+            return bar.close
+        
+        elif source == 'hl2':
+            return (bar.high  + bar.low) / 2
+        
+        elif source == 'hlc3':
+            return (bar.high  + bar.low + bar.close) / 3
+        
+        elif source == 'hlcc4':
+            return (bar.high  + bar.low + bar.close + bar.close) / 4
+        
+        elif source == 'ohlc4':
+            return (bar.open + bar.high + bar.low + bar.close) / 4
+
 
 # Resolution('1m')
 def clear_terminal():
