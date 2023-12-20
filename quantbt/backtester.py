@@ -197,7 +197,7 @@ if __name__ == '__main__':
     import pandas as pd
     import os
     
-    from alpha import BaseAlpha
+    from alpha import BaseAlpha, EmaCrossover # noqa
     from dataloader import DataLoader
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
@@ -231,7 +231,8 @@ if __name__ == '__main__':
     # Create DataHandler
     dataloader = DataLoader(dataframes, '1d', start_date, end_date)
     engine = Engine(dataloader)
-    alpha = BaseAlpha('base_alpha', engine, .1, .05)
+    # alpha = BaseAlpha('base_alpha', engine, .1, .05)
+    alpha = EmaCrossover('testEMACross', engine, 'close', 14, 28, .1, .05)
 
     backtester = Backtester(dataloader, engine, alpha, 1)
 

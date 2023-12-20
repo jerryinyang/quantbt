@@ -1,8 +1,9 @@
 import numpy as np
 
 from engine import Engine
-from orders import Order
+from indicators import EMA
 from observers import Observer
+from orders import Order
 from trades import Trade
 from utils import Bar, Logger, debug   # noqa: F401
 
@@ -44,9 +45,17 @@ class Alpha(Observer, ABC):
 
 
     @abstractmethod
-    def compute_values(self, datas:Dict[str, Bar]):
+    def warmup(self, datas:Dict[str, Bar]):
+        # Update Warmup
+        if self.warmup_period > 0:
+            
+            # Compute/Update Strategy Values
+            self.compute_values(datas)
+
+            # Reduce teh warmup period
+            self.warmup_period -= 1
         # Handles strategy's calculations and computations
-        pass
+        
 
 
     @abstractmethod
@@ -61,23 +70,9 @@ class Alpha(Observer, ABC):
 
         # Update the allocations
         self.allocations.update(allocation_per_ticker)
-
-        # Update Warmup
-        if self.warmup_period > 0:
-            
-            # Compute/Update Strategy Values
-            self.compute_values(datas)
-
-            # Reduce teh warmup period
-            self.warmup_period -= 1
-            
-            # Return True for warmup
-            return True
         
         return False
         
-        
-    
 
     @abstractmethod
     def reset_alpha(self, engine:Engine):
@@ -96,7 +91,7 @@ class Alpha(Observer, ABC):
         return balance * self.allocations[ticker]
         
 
-    def update(self, value : Order|Trade) -> None:
+    def update_positions(self, value : Order|Trade) -> None:
         # Confirm that the passed order/trade belongs to this alpha
         if not value.alpha_name == self.name:
             return 
@@ -276,25 +271,50 @@ class BaseAlpha(Alpha):
         self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
 
-
 class EmaCrossover(Alpha):
     params = {}
-    def __init__(self, name : str, engine: Engine, fast_length : float, slow_length : float) -> None:
+        
+    def __init__(self, name : str, engine: Engine, source :str, fast_length : float, slow_length : float, profit_perc:float, loss_perc:float) -> None:
         super().__init__(name, engine)
 
-        self.fast_length = fast_length
-        self.slow_length = slow_length
+        self.source = source
+        self.fast_length = min(fast_length, slow_length)
+        self.slow_length = max(fast_length, slow_length)
+        self.profit_perc = profit_perc
+        self.loss_perc = loss_perc
 
-        self.emas = {}
+        self.params['fast_length'] = self.fast_length
+        self.params['slow_length'] = self.slow_length
+
+        self.warmup_period = self.slow_length
+    
+        self.emas : Dict[str, List[EMA, EMA]] = {}
+        
+        # Create EMA Setup for all assets in the engine
+        for ticker in engine.tickers:
+            fast_ema = EMA(f"{ticker}_fast_ema", self.source, self.fast_length)
+            slow_ema = EMA(f"{ticker}_slow_ema", self.source, self.slow_length)
+
+            self.emas[ticker] = [fast_ema, slow_ema]            
+
 
     def compute_values(self, datas:Dict[str, Bar]):
-        pass
-        
+        # Update Indicators Here, per ticker
+        for ticker, ema_pair in self.emas.items():
+            data = datas[ticker]
+            # Update each ema with the ticker's data
+            for ema in ema_pair:
+                ema.update(data)
+
+                # if 'slow_ema' in ema.name:
+                #     debug(ema.value, datas[ticker], self.warmup_period)
 
 
     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
-        super().next(eligibles, datas, allocation_per_ticker)
-
+        if super().next(eligibles, datas, allocation_per_ticker):
+            # Returns True if warmup period is active
+            return [], []
+        
         # Decision-making / Signal-generating Algorithm
         alpha_long, alpha_short = self.signal_generator(eligibles)
         eligible_assets = list(set(alpha_long + alpha_short))
@@ -331,23 +351,27 @@ class EmaCrossover(Alpha):
         return alpha_long, alpha_short 
 
 
-    def signal_generator(self, eligibles:list[str]) -> tuple:
-        alpha_scores = { key : np.random.rand() for key in eligibles}
+    def signal_generator(self, eligibles:list[str]) -> tuple:        
+        alpha_long = [] 
+        alpha_short = []
 
-        alpha_scores = {
-            key : value \
-                for key, value in sorted(alpha_scores.items(), key=lambda item : item[1])
-                } # Sorts the dictionary
+        for ticker in eligibles:
+            fast, slow = self.emas[ticker]
+
+            if (not fast) or (not slow):
+                break
+            
+            # Find Crossovers
+            cross_long = (fast[0] > slow[0]) and (fast[1] <= slow[1])
+            cross_short = (fast[0] <= slow[0]) and (fast[1] > slow[1])
+
+            if cross_long:
+                alpha_long.append(ticker)
+            elif cross_short:
+                alpha_short.append(ticker)
+
         
-        list_scores = list(alpha_scores.keys())
-
-        if not list_scores:
-            return [], []
-        
-        alpha_long = [list_scores[0]] 
-        alpha_short = [list_scores[-1]] 
-
-        return alpha_long, alpha_short       
+        return alpha_long, alpha_short  
 
 
     def reset_alpha(self, engine:Engine):
@@ -355,9 +379,6 @@ class EmaCrossover(Alpha):
         Resets the alpha with a new engine.
         '''
 
-        self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
+        self.__init__(self.name, engine, self.source, self.fast_length, self.slow_length, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
-
-
-
 

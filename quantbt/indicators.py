@@ -1,8 +1,10 @@
 from abc import ABC, abstractmethod
 from collections import deque
-from utils import Bar, Source
+from utils import Bar, Source, Logger, debug
 
 class Indicator(ABC):
+
+    logger = Logger('logger_indicator')
     
     params = {
 
@@ -40,14 +42,17 @@ class EMA(Indicator):
         # Add New Data to Data Window
         self.window.appendleft(self.source(bar))
 
+        # Check if data window is filled
         if len(self.window) < self.window.maxlen:
             return 
+        
+        debug(self.name, self.value)
 
         # Convert Data to list and reverse the order
         data = list(self.window)
         data.reverse()
 
-        # Calculate 
+        # Calculate EMA value
         ema  = [data[0]]  # Initial value is the same as the first data point
         alpha = 2 / (len(data) + 1)
 
@@ -57,3 +62,13 @@ class EMA(Indicator):
 
         # Add new value to self.value        
         self.value.appendleft(ema[-1])
+
+        return ema[-1]
+
+
+    def __getitem__(self, index):
+        if index > (len(self.value) - 1):
+            self.logger.warning('Index exceeds available data.')
+            return
+        
+        return self.value[index]

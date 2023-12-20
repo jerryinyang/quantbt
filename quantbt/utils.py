@@ -249,10 +249,9 @@ def clear_terminal():
             os.system("clear")
 
 
-def debug(texts):
-    if not isinstance(texts, list):
-        texts = [texts]
-        
+def debug(*texts):
+    texts = list(texts)
+
     display_text = "\n".join([str(text) for text in texts])
     print(display_text)
     x = input(" " )
