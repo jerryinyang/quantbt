@@ -657,7 +657,7 @@ class DataBentoData(TickerData):
     
 
 if __name__ == "__main__":
-    # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
+    # ethusdt = BinanceData(['ETHUSDT', 'BTCUSDT', 'CELOUSDT'], '1h', days=30)
     # ethusdt.download()
     # print(ethusdt.data.index.dtype)
 
@@ -668,12 +668,17 @@ if __name__ == "__main__":
     # aapl.fetch_data()
     # print(aapl.has_data())
 
-    # # Download Bulk Data
-    # data, tickers = BinanceData('', '1d', years=5).fetch_data(['BTCUSDT', 'ETHUSDT', 'GMTUSDT'])
-    # print(data.columns, '\n\n\n', tickers)
+    # Download Bulk Data
+    symbols = ['BTCUSDT', 'ETHUSDT', 'GMTUSDT', 'CELOUSDT', 'DOGEUSDT', 'SOLUSDT']
+
+    for symbol in symbols:
+        _ = BinanceData(symbol, '1h', years=6)
+        _.fetch_data()
+
+        data = _.raw_dataframe
+        data.to_parquet(f'/Users/jerryinyang/Code/quantbt/data/prices/{symbol}.parquet')
 
     # ethusdt = BinanceData('ETHUSDT', '1h', days=30)
 
     # DataBentoData('/Users/jerryinyang/databento/GLBX-20231115-7N8E9R8WKG')
-
     pass
