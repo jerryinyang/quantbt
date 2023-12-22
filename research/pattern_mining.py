@@ -13,13 +13,6 @@ from typing import Literal, List, Union
 import xgboost as xgb
 from yellowbrick.cluster import KElbowVisualizer
 
-
-def silhouette_score_custom(X, labels):
-    try:
-        return silhouette_score(X, labels)
-    except ValueError:
-        return 0.0
-
 class PatternMiner:
 
     def __init__(self, n_pivots:float, lookback : int, hold_period:int, random_state=14) -> None:
@@ -131,7 +124,7 @@ class PatternMiner:
             idx = data_slice.index
             
             # Get the Pivot Points
-            pivot_indices, pivot_prices = self.find_pips(data_slice['close'].to_numpy(), self.n_pivots, 3)
+            pivot_indices, pivot_prices = self.find_pivots(data_slice['close'].to_numpy(), self.n_pivots, 3)
             pivot_lines = []
             colors = []
 
@@ -224,7 +217,7 @@ class PatternMiner:
             start_index = index - self.lookback + 1
             window = data[start_index:index + 1] # length would be self.lookback + 1
             
-            pivot_indices, pivot_prices = self.find_pips(window, self.n_pivots, dist_measure=self._dist_measure) # TODO : Implement other pivot algorithms
+            pivot_indices, pivot_prices = self.find_pivots(window, self.n_pivots, dist_measure=self._dist_measure) # TODO : Implement other pivot algorithms
             pivot_indices = [pos + start_index for pos in pivot_indices]
 
             # Check internal pivots to see if it is the same as last (if they are on the same candles)
@@ -257,7 +250,7 @@ class PatternMiner:
         # Draw a vertical line at the split index
         plt.axvline(x=split_index, color='red', linestyle='--', label='Out-of-sample split')
 
-        plt.xlabel('Trades')
+        plt.xlabel('Trade Bars')
         plt.ylabel('Returns')
         plt.title('Log Returns')
         plt.legend()
@@ -291,7 +284,7 @@ class PatternMiner:
 
     # region - METHODS FOR PIVOTS FINDING
     # Find Perceptually Important Points in data
-    def find_pips(self, data: np.array, n_pips: int, dist_measure: int):
+    def find_pivots(self, data: np.array, n_pivots: int, dist_measure: int):
         # dist_measure
         # 1 = Euclidean Distance
         # 2 = Perpindicular Distance
@@ -300,7 +293,7 @@ class PatternMiner:
         pips_x = [0, len(data) - 1]  # Index
         pips_y = [data[0], data[-1]] # Price
 
-        for curr_point in range(2, n_pips):
+        for curr_point in range(2, n_pivots):
 
             md = 0.0 # Max distance
             md_i = -1 # Max distance index
@@ -358,7 +351,7 @@ class PatternMiner:
             window = self._data[start_index:
                                  index + 1] # length would be self.lookback + 1
             
-            pivot_indices, pivot_prices = self.find_pips(window, self.n_pivots, dist_measure=self._dist_measure) # TODO : Implement other pivot algorithms
+            pivot_indices, pivot_prices = self.find_pivots(window, self.n_pivots, dist_measure=self._dist_measure) # TODO : Implement other pivot algorithms
             pivot_indices = [pos + start_index for pos in pivot_indices]
 
             # Check internal pivots to see if it is the same as last (if they are on the same candles)
@@ -706,16 +699,15 @@ class PatternMiner:
     # endregion
 
 
-
 if __name__ == '__main__':
     clear_terminal()
 
     # Read In Full Data
-    data = pd.read_parquet('/Users/jerryinyang/Code/quantbt/data/prices/ETHUSDT.parquet')
+    data = pd.read_parquet('/Users/jerryinyang/Code/quantbt/data/prices/GMTUSDT.parquet')
     data.columns = data.columns.str.lower()
 
     x = np.log(data['close'].to_numpy())
-    x = x[:10000]
+    x = x[:5000]
     
     split_index = int(round(0.7 * len(x)))
     x_train = x[:split_index]
