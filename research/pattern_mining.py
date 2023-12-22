@@ -9,7 +9,8 @@ from hashlib import sha256 as shash # noqa
 from itertools import product
 from sklearn.cluster import KMeans, DBSCAN, SpectralClustering
 from sklearn.metrics import silhouette_score, davies_bouldin_score
-from typing import Literal
+from typing import Literal, List, Union
+import xgboost as xgb
 from yellowbrick.cluster import KElbowVisualizer
 
 
@@ -205,8 +206,90 @@ class PatternMiner:
         plt.show(), plt.clf()
 
 
+    # METHODS FOR TESTING THE MODEL
+    def forward_test(self, data:np.ndarray, split_index=-1):
+        _ret = pd.Series(data).diff().shift(-1) # Compute the returns of the data
 
-    # METHODS FOR PIVOTS FINDING
+        # Loop Through Data, and find the patterns
+        last_pivot_indices = [0] * self.n_pivots # Create a list of zeros; this stores the last pivots patterns found.
+        signals = [0] * len(data) # Initialize all signals as 0
+
+        # Generate signals
+        for index in range(self.lookback - 1, len(data)):
+            # If signal at that index is not 0 (position is open), skip index
+            if signals[index] != 0:
+                continue
+
+            # Get a window of data
+            start_index = index - self.lookback + 1
+            window = data[start_index:index + 1] # length would be self.lookback + 1
+            
+            pivot_indices, pivot_prices = self.find_pips(window, self.n_pivots, dist_measure=self._dist_measure) # TODO : Implement other pivot algorithms
+            pivot_indices = [pos + start_index for pos in pivot_indices]
+
+            # Check internal pivots to see if it is the same as last (if they are on the same candles)
+            same = pivot_indices[1: -1] == last_pivot_indices[1: -1]
+            last_pivot_indices = pivot_indices 
+
+            if same:
+                # Only allow new unique patterns
+                continue
+
+            # Predict signal / generate signal 
+            signal = self._predict_cluster(pivot_prices)
+
+            if signal: 
+                # If signal is 1 or -1, set the signal value for the next [holding_period] values
+                for i in range(1, self.hold_period + 1):
+                    if (index + i) >= len(signals):
+                        break
+                    signals[index + i] = signal
+
+        # Calculate Returns trading the model
+        returns = signals * _ret
+
+        # Calculate the cumulative sum for the entire array
+        log_return = np.cumsum(returns)
+
+        # Plot the equity curve
+        plt.plot(log_return, label='Log return curve')
+
+        # Draw a vertical line at the split index
+        plt.axvline(x=split_index, color='red', linestyle='--', label='Out-of-sample split')
+
+        plt.xlabel('Trades')
+        plt.ylabel('Returns')
+        plt.title('Log Returns')
+        plt.legend()
+        plt.show()
+
+
+    def _predict_cluster(self, points: Union[List[float], np.ndarray]):
+        '''
+        Categorizes a vertor into a cluster.
+
+        Returns:
+            signal (int) : Signal for the point vector
+        '''
+        if not isinstance(points, np.ndarray):
+            points = np.array(points).reshape(1, -1)
+
+        if (not self._cluster_model):
+            # Model has not been trained
+            raise ValueError('Prediction was unsuccessfull. Class has not been trained.')
+
+        points = self._normalize_points(points)
+        cluster_index = self._cluster_model.predict(points)
+
+        if cluster_index in self._selected_long:
+            return 1.0
+        elif cluster_index in self._selected_short:
+            return -1.0
+        else:
+            return 0.0
+
+
+    # region - METHODS FOR PIVOTS FINDING
     # Find Perceptually Important Points in data
     def find_pips(self, data: np.array, n_pips: int, dist_measure: int):
         # dist_measure
@@ -283,7 +366,7 @@ class PatternMiner:
             
             if not same:
                 # Z-Score normalize pattern
-                pivot_prices = list((np.array(pivot_prices) - np.mean(pivot_prices)) / np.std(pivot_prices))
+                pivot_prices = self._normalize_points(pivot_prices)
                 self._unique_pivot_patterns.append(pivot_prices)
                 self._unique_pivot_indices.append(index) # Store the bar index where pattern is found
 
@@ -330,7 +413,13 @@ class PatternMiner:
             i_pattern += 1
 
 
-    # METHODS FOR CLUSTERING
+    def _normalize_points(self, points):
+        points = list((np.array(points) - np.mean(points)) / np.std(points))
+        return np.array(points)
+    # endregion
+
+
+    # region - METHODS FOR CLUSTERING
 
     # region - kmeans
     def _cluster_patterns_kmeans(self, points, search_method :str='elbow'):
@@ -355,8 +444,12 @@ class PatternMiner:
 
         # Extract clustering results: clusters and their centers
         self._clusters_pivot, self._clusters_indices = self._get_clusters_kmeans(points, kmeans.labels_)
-        self._cluster_model = kmeans
+        
+        # Train a KNN classifier on the original data
+        model = xgb.XGBClassifier(objective='multi:softmax', num_class=n_clusters)
+        model.fit(points, kmeans.labels_)
 
+        self._cluster_model = model
 
     def _search_kmeans_elbow(self, points, kmax):
         if not isinstance(points, np.ndarray):
@@ -371,7 +464,6 @@ class PatternMiner:
 
         return visualizer.elbow_value_
 
-
     def _search_kmeans_silhouette(self, points, kmax):
         silhouette_scores = []
         if not isinstance(points, np.ndarray):
@@ -385,7 +477,6 @@ class PatternMiner:
             silhouette_scores.append(silhouette_score(points, labels, metric = 'euclidean'))
         
         return k_values[np.argmax(silhouette_scores)]
-
 
     def _get_clusters_kmeans(self, points, cluster_labels:list[int]):
         n_clusters = cluster_labels.max() + 1
@@ -425,6 +516,12 @@ class PatternMiner:
         self._clusters_pivot, self._clusters_indices = self._get_clusters_dbscan(points, dbscan.labels_)
         self._cluster_model = dbscan
 
+        # Train a KNN classifier on the original data
+        n_clusters = dbscan.labels_.max() + 1
+        model = xgb.XGBClassifier(objective='multi:softmax', num_class=n_clusters)
+        model.fit(points, dbscan.labels_)
+
+        self._cluster_model = model
 
     def _get_clusters_dbscan(self, points, cluster_labels:list[int]):
         n_clusters = cluster_labels.max() + 1
@@ -450,7 +547,6 @@ class PatternMiner:
             indices.append(_indices)
 
         return list(clusters.values()), indices
-
 
     def _search_params_dbscan(self, points, eps_values=np.linspace(0.1, 1.0, 10), min_samples_values=range(2, 5)):
         if not isinstance(points, np.ndarray):
@@ -492,9 +588,13 @@ class PatternMiner:
 
         # Extract clustering results: clusters and their centers
         self._clusters_pivot, self._clusters_indices = self._get_clusters_kmeans(points, spectral.labels_)
-        self._cluster_model = spectral
 
-    
+        # Train a KNN classifier on the original data
+        model = xgb.XGBClassifier(objective='multi:softmax', num_class=n_clusters)
+        model.fit(points, spectral.labels_)
+
+        self._cluster_model = model
+
     def _search_n_spectral(self, points, n_cluster_range:list[int]=range(2, 15), n_iterations:int=3, batch_size:float=0.1):
         all_scores = []
         for _ in range(n_iterations):
@@ -524,8 +624,10 @@ class PatternMiner:
     
     # endregion
 
+    # endregion
 
-    # METHODS FOR SIGNALS
+
+    # region - METHODS FOR SIGNALS
     def _assign_cluster_signals(self):
         self._cluster_signals.clear()
 
@@ -562,7 +664,6 @@ class PatternMiner:
 
 
     def _compute_total_performance(self):
-
         long_signal = np.zeros(len(self._data))
         short_signal = np.zeros(len(self._data))
 
@@ -602,23 +703,32 @@ class PatternMiner:
 
         return martin
 
+    # endregion
+
+
 
 if __name__ == '__main__':
     clear_terminal()
 
     # Read In Full Data
-    data = pd.read_parquet('/Users/jerryinyang/Code/quantbt/data/prices/BTCUSDT.parquet')
+    data = pd.read_parquet('/Users/jerryinyang/Code/quantbt/data/prices/ETHUSDT.parquet')
     data.columns = data.columns.str.lower()
 
     x = np.log(data['close'].to_numpy())
-    x = x[-10000:]
-
-    miner = PatternMiner(n_pivots=4, lookback=24, hold_period=6, random_state=14)
-    miner.train(x)
-    miner.plot_all_clusters()
+    x = x[:10000]
     
-    # # Monte Carlo test, takes about an hour..
-    # miner.train(x, iterations=50)
+    split_index = int(round(0.7 * len(x)))
+    x_train = x[:split_index]
+
+    miner = PatternMiner(n_pivots=5, lookback=24, hold_period=6, random_state=14)
+    miner.train(x_train)
+    # miner.plot_all_clusters()
+
+    # Forward Test
+    miner.forward_test(x, split_index)
+    
+    # Monte Carlo test, takes about an hour..
+    # miner.train(x, iterations=100)
     
     # plt.style.use('dark_background')
     # actual_martin = miner.get_fit_martin()
