@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 from collections import deque
-from utils import Bar, Source, Logger, debug
+from typing import Any, Literal, Union
+from utils import Bar, Source, Logger
 
 class Indicator(ABC):
 
     logger = Logger('logger_indicator')
-    
+
     params = {
 
     }
@@ -29,7 +30,10 @@ class EMA(Indicator):
         'max_lookback' : 100
     }
 
-    def __init__(self, name : str, source : str, period : int) -> None:
+    def __init__(self, 
+                 name : str, 
+                 source:Literal['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'hlcc4', 'ohlc4'], 
+                 period : int) -> None:
         self.name = name
         self.source = Source(source)
         self.params['period'] = period
@@ -38,15 +42,15 @@ class EMA(Indicator):
         self.window = deque([], maxlen=period)
 
 
-    def update(self, bar : Bar):
+    def update(self, bar : Union[Bar, Any]):
+        data = self.source(bar) if isinstance(bar, Bar) else bar
+
         # Add New Data to Data Window
-        self.window.appendleft(self.source(bar))
+        self.window.appendleft(data)
 
         # Check if data window is filled
-        if len(self.window) < self.window.maxlen:
+        if self.is_ready:
             return 
-        
-        debug(self.name, self.value)
 
         # Convert Data to list and reverse the order
         data = list(self.window)
@@ -65,6 +69,10 @@ class EMA(Indicator):
 
         return ema[-1]
 
+    @property
+    def is_ready(self):
+        return len(self.window) < self.window.maxlen
+        
 
     def __getitem__(self, index):
         if index > (len(self.value) - 1):

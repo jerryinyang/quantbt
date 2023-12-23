@@ -2,6 +2,7 @@ from datetime import datetime
 import logging
 import os
 from bisect import bisect_right
+from typing import Literal
 
 class Bar:
     def __init__(
@@ -201,7 +202,7 @@ class ObservableDict(dict):
 
 
 class Source:
-    def __init__(self, source : str) -> None:
+    def __init__(self, source:Literal['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'hlcc4', 'ohlc4']) -> None:
         if source.lower() not in ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'hlcc4', 'ohlc4']:
             UserWarning(f"{source} is not a valid value for the source argument. Defaulting to 'close'.")
             source = 'close'
