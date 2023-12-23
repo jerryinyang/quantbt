@@ -9,3 +9,6 @@ test.*
 __pycache__
 /databento
 *.log
+models.py
+research/*
+research/pattern_mining.ipynb
