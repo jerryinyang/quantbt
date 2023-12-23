@@ -10,5 +10,5 @@ __pycache__
 /databento
 *.log
 models.py
-research/*
-research/pattern_mining.ipynb
+research/pattern_mining.py
+
