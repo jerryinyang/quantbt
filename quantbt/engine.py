@@ -544,7 +544,7 @@ class Engine:
         return new_trade
 
 
-    def _close_trade(self, trade:Trade, bar:Bar, price:float):
+    def _close_trade(self, trade:Trade, bar:Bar, price:float=None):
 
         # Update the Trade
         self._update_trade(trade, bar, price)

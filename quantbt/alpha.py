@@ -57,7 +57,6 @@ class Alpha(Observer, ABC):
         # Handles strategy's calculations and computations
         
 
-
     @abstractmethod
     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
         '''
@@ -91,7 +90,7 @@ class Alpha(Observer, ABC):
         return balance * self.allocations[ticker]
         
 
-    def update_positions(self, value : Order|Trade) -> None:
+    def update(self, value : Order|Trade) -> None:
         # Confirm that the passed order/trade belongs to this alpha
         if not value.alpha_name == self.name:
             return 
@@ -270,6 +269,7 @@ class BaseAlpha(Alpha):
 
         self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
+
 
 class EmaCrossover(Alpha):
     params = {}

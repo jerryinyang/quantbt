@@ -2,193 +2,18 @@
 CUSTOM STRATEGIES (ALPHAS) AND THEIR DEPENDENCIES
 '''
 
-import utils_tv as tv
-from alpha import Alpha
-from engine import Engine
-from orders import Order
-from indicators import Indicator, EMA
-from utils import Bar 
-
-import math
 import numpy as np
 from collections import deque
 from typing import List, Dict
 
+from alpha import Alpha
+from engine import Engine
+from models.pip_miner import PipMiner
+from orders import Order
+from utils import Bar, debug # noqa: F401
+from utils_tv import na #noqa: F401
+
 exectypes = Order.ExecType
-
-_ = '''
-open
-high
-low
-close
-'''
-
-
-# INDICATORS
-class MarketBias(Indicator):
-
-    params = {
-        'period' : 100,
-        'smoothing' : 100,
-        'oscillator' : 7,
-    }
-    
-
-    def __init__(self, name:str, period:int, smoothing:int) -> None:
-        super().__init__(name)
-        
-        self.period = period
-        self.smoothing = smoothing
-        self.params.update(period=period, smoothing=smoothing)
-
-        # Smoothen the OHLC values 
-        self._ema_o = EMA('ema_open', 'open', period)
-        self._ema_h = EMA('ema_high', 'high', period)
-        self._ema_l = EMA('ema_low', 'low', period)
-        self._ema_c = EMA('ema_close', 'close', period)
-
-        self._ema_o2 = None
-        self._ema_h2 = None
-        self._ema_l2 = None
-        self._ema_c2 = None
-
-        self._ema_osc = None
-        
-
-        # Windows
-        self._window_xhaopen = deque([float('nan'), float('nan')], maxlen=2)
-        self._window_haclose = deque([float('nan'), float('nan')], maxlen=2)
-
-    def update(self, bar: Bar):
-        # Update Indicators
-        self._ema_o.update(bar)
-        self._ema_h.update(bar)
-        self._ema_l.update(bar)
-        self._ema_c.update(bar)
-
-        # EMA Values Not Ready
-        if not (
-            self._ema_o.is_ready and
-            self._ema_h.is_ready and
-            self._ema_l.is_ready and
-            self._ema_c.is_ready
-            ):
-            return   
-
-        o : float = self._ema_o[0]
-        h : float = self._ema_h[0]
-        l : float = self._ema_l[0]  # noqa: E741
-        c : float = self._ema_c[0]     
-
-        # Calculate the Heikin Ashi OHLC values from it
-        haclose = (o + h + l + c) / 4
-        xhaopen = (o + c) / 2
-        haopen = tv.na(
-            tv.ternary(
-                not tv.na(self._window_xhaopen[1]), # Condition : if xhaopen[1] exists
-                (o + c) / 2, # if condition is True
-                (self._window_xhaopen[0] + self._window_haclose[0]) # if condition is False
-            )
-        ) / 2
-        hahigh = max(h, max(haopen, haclose))
-        halow = min(l, min(haopen, haclose))
-
-        # Update Windows with new values
-        self._window_haclose.appendleft(haclose)
-        self._window_xhaopen.appendleft(xhaopen)
-
-        # Smoothen the Heiken Ashi Candles
-        if tv.na([self._ema_o2, self._ema_o2, self._ema_o2, self._ema_o2]):
-            period = self.params['smoothing']
-
-            self._ema_o2 = EMA('ema_o2', 'open', period)
-            self._ema_h2 = EMA('ema_h2', 'high', period)
-            self._ema_l2 = EMA('ema_l2', 'low', period)
-            self._ema_c2 = EMA('ema_c2', 'close', period)
-        else: 
-            self._ema_o2.update(haopen)
-            self._ema_h2.update(haclose)
-            self._ema_l2.update(hahigh)
-            self._ema_c2.update(halow)
-
-        o2 : float = self._ema_o2[0]
-        h2 : float = self._ema_h2[0] # noqa
-        l2 : float = self._ema_l2[0] # noqa
-        c2 : float = self._ema_c2[0] 
-
-        # Oscillator 
-        osc_bias = 100 * (c2 - o2)
-
-        if tv.na(self._ema_osc):
-            self._ema_osc = EMA('ema_osc', 'close', self.params['oscillator'])
-        else:
-            self._ema_osc.update(osc_bias)
-
-        # Generate Signal
-        if (osc_bias > 0) and (osc_bias >= self._ema_osc[0]):
-            signal = 2
-        elif (osc_bias > 0) and (osc_bias < self._ema_osc[0]):
-            signal = 1
-        elif (osc_bias < 0) and (osc_bias <= self._ema_osc[0]):
-            signal = -2
-        elif (osc_bias < 0) and (osc_bias > self._ema_osc[0]):
-            signal = -1
-        else:
-            signal = 0
-
-        # Assign Signal to self.value
-        self.value = signal
-
-
-class HawkesProcess(Indicator):
-
-    params = {
-        'kappa' : 0.1,
-        'lookback' : 14,
-        'percentile' : 5,
-    }
-    
-    def __init__(self, name:str, kappa:float, lookback:int, percentile:float) -> None:
-        super().__init__(name)
-
-        self.kappa = kappa
-        self.lookback = lookback
-        self.percentile = percentile
-        self.params.update(kappa=kappa, lookback=lookback, percentile=percentile)
-
-        self._hawkes = deque([float('nan')] * lookback, maxlen=lookback)
-        self._upper = deque([float('nan')] * 2, maxlen=2)
-        self._lower = deque([float('nan')] * 2, maxlen=2)
-
-
-    def update(self, bar: Bar):
-        alpha = math.exp(self.kappa)
-        hawkes = self._hawkes[0]
-
-        if tv.na(hawkes):
-            hawkes = bar.close
-        else:
-            hawkes = (hawkes * alpha + bar.close) * self.kappa
-            
-        # Rolling Quantiles
-        upper_band = np.percentile(np.array((self._hawkes), 100 - self.params['percentile']), axis=None, method='closest_observation')
-        lower_band = np.percentile(np.array((self._hawkes), self.params['percentile']), axis=None, method='closest_observation')
-
-        # Update Windows
-        self._hawkes.appendleft(hawkes)
-        self._upper.appendleft(upper_band)
-        self._lower.appendleft(lower_band)
-
-
-
-
-
-# STRATEGIES
-class StrategyHawkesProcess(Alpha):
-
-    def __init__(self, name: str, engine: Engine) -> None:
-        super().__init__(name, engine)
-
 
 class BaseAlpha(Alpha):
     def __init__(self, name : str, engine: Engine, profit_perc:float, loss_perc:float) -> None:
@@ -196,7 +21,6 @@ class BaseAlpha(Alpha):
 
         self.profit_perc = profit_perc
         self.loss_perc = loss_perc
-
 
     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
         super().next(eligibles, datas, allocation_per_ticker)
@@ -263,3 +87,181 @@ class BaseAlpha(Alpha):
 
         self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
+
+
+
+class PipMinerStrategy(Alpha):
+
+    params = {
+        'n_pivots' : 5, 
+        'lookback' : 24, 
+        'hold_period' : 6
+    }
+
+
+    def __init__(self, name: str, engine: Engine, n_pivots:int, lookback:int, hold_period:int, train_split_percent:float=0.6) -> None:
+        super().__init__(name, engine)
+
+        # Update Strategy Parameters
+        self.params.update(n_pivots=n_pivots, lookback=lookback, hold_period=hold_period)
+
+        self._train_split_percent = train_split_percent
+        self._miners = self._init_miners(engine)
+
+        # Store Deque (windows) of price data for miner predictions
+        self._windows = {ticker : deque([np.nan] * lookback, maxlen=lookback+1) for ticker in engine.tickers}
+        self.warmup_period = 1
+
+        # Store Trade Durations for each ticker
+        self._trade_durations = {ticker : {} for ticker in engine.tickers}
+
+
+    def _init_miners(self, engine:Engine):
+        '''
+        Creates and Trains PipMiner Instances for all tickers in the engine data.
+        '''
+        miners = {}
+        
+        # Loop Throuhgh All Ticker Data in the Engine
+        for ticker, dataframe in engine.dataframes.items():
+            # Instantiate a miner
+            miner = PipMiner(**self.params) # use self.params to fill the arguments
+
+            # Get the close data from the ticker dataframe
+            data = np.log(dataframe['close'].to_numpy())
+
+            # Split the data for training the model
+            split_index = int(round(self._train_split_percent * len(data)))
+            data_train = data[:split_index]
+
+            # Train the miner 
+            miner.train(data_train)
+
+            # Add miner to miners dictionary
+            miners[ticker] = miner
+
+        return miners
+
+
+    def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
+        super().next(eligibles, datas, allocation_per_ticker)
+
+        if self.warmup_period:
+            self.warmup(datas)
+            return [], []
+
+
+        # Update data windows for each ticker
+        for ticker, window in self._windows.items():
+            window.appendleft(datas[ticker].close) # Append the new close data to the window
+
+        # Decision-making / Signal-generating Algorithm
+        alpha_long, alpha_short = self.signal_generator(eligibles)
+        eligible_assets = list(set(alpha_long + alpha_short))
+        
+        for ticker in eligible_assets:
+            bar = datas[ticker]
+
+            # Calculate Risk Amount based on allocation_per_ticker
+            risk_dollars =  self.sizer(bar)
+
+            # Tickers to Long
+            if ticker in alpha_long:
+                entry_price = bar.close
+
+                position_size = risk_dollars / entry_price
+
+                exit_tp = None # entry_price * (1 + .1)
+                exit_sl = None # entry_price * (1 - .05)
+                
+                # Create and Send Long Order
+                self.buy(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
+
+                # Tickers to Short
+            elif ticker in alpha_short:
+                entry_price = bar.close
+                position_size = -1 * risk_dollars / entry_price
+
+                exit_tp = None # entry_price * (1 - .1)
+                exit_sl = None # entry_price * (1 + .05)
+                
+                # Create and Send Short Order
+                self.sell(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
+
+            # Scan for Exits
+            if len(self.trades[bar.ticker]):
+                self.scan_exits(bar)
+
+        return alpha_long, alpha_short 
+
+
+    def signal_generator(self, eligibles:list[str]) -> tuple:
+        '''
+        Generate signals for long and short using the miners.
+        '''
+        
+        alpha_long, alpha_short = [], []
+        for ticker in eligibles:
+            # Get the data window, and miner
+            window = self._windows[ticker]
+            miner = self._miners[ticker]
+            
+            # Generate signal using the miner
+            signal = miner.generate_signal(window)
+
+            # Add signalss
+            if signal > 0:
+                alpha_long.append(ticker)
+            elif signal < 0:
+                alpha_short.append(ticker)
+
+        return alpha_long, alpha_short  
+
+    
+    def reset_alpha(self, engine:Engine):
+        '''
+        Resets the alpha with a new engine.
+        '''
+        self.__init__(self.name, engine, **self.params)
+        self.logger.info(f'Alpha {self.name} successfully reset.')
+
+
+    def warmup(self, datas: Dict[str, Bar]):
+        full = True
+        # Update data windows for each ticker
+        for ticker, window in self._windows.items():
+            window.appendleft(datas[ticker].close) # Append the new close data to the window
+            
+            if np.nan in window:
+                full = False
+
+        # Check if all are full
+        if full:
+            self.warmup_period = 0
+            
+    
+    def scan_exits(self, bar : Bar):
+
+        ticker = bar.ticker
+
+        # Read self.trades list and track the number of bars they have been open
+        trades = self.trades[ticker]
+        remove = []
+
+        # Loop through each trade for every ticker
+        for trade_id, trade in trades.items():
+            
+            # If trade duration hasn't been registered, add it with duration of one 
+            if trade_id not in self._trade_durations[ticker].keys():
+                self._trade_durations[ticker][trade_id] = 1
+                continue
+            
+            self._trade_durations[ticker][trade_id] += 1
+            
+            if self._trade_durations[ticker][trade_id] >= self.params['hold_period']:
+                remove.append(trade)
+
+        # Remove the trades
+        for trade in remove:
+            self.close_trade(trade, bar, None)
+            print(f"Removed Trade {trade.id}")

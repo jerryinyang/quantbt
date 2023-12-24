@@ -186,6 +186,7 @@ class Backtester:
         state = self.__dict__.copy()
         return state
 
+
     def __setstate__(self, state):
         # Customize the object reconstruction
         self.__dict__.update(state)
@@ -193,15 +194,15 @@ class Backtester:
 
 
 if __name__ == '__main__':
-    import yfinance as yf
+    import yfinance as yf # noqa
     import pandas as pd
-    import os
+    import os # noqa
     
     from alpha import BaseAlpha, EmaCrossover # noqa
+    from strategies import PipMinerStrategy
     from dataloader import DataLoader
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
-    
 
     start_date = '2020-01-02'
     end_date = '2023-12-31'
@@ -210,29 +211,39 @@ if __name__ == '__main__':
     with open('logs.log', 'w'):
         pass
 
-    tickers = ['AAPL'] # 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
-    ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
+    # tickers = ['GOOGL'] # 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
+    # ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
+
+    # dfs = []
+
+    # for ticker in tickers:
+    #     file_name = f'data/prices/{ticker}.csv'
+
+    #     if os.path.exists(file_name):
+    #         df = pd.read_csv(file_name, index_col='Date', parse_dates=True)
+    #     else:
+    #         df = yf.download(ticker, start=start_date, end=end_date)
+    #         df.to_csv(file_name)
+            
+    #     dfs.append(df)
+    
+    # FOR CRYPTO
+    tickers = ['BTCUSDT']# , 'CELOUSDT', 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
 
     dfs = []
 
     for ticker in tickers:
-        file_name = f'data/prices/{ticker}.csv'
-
-        if os.path.exists(file_name):
-            df = pd.read_csv(file_name, index_col='Date', parse_dates=True)
-        else:
-            df = yf.download(ticker, start=start_date, end=end_date)
-            df.to_csv(file_name)
-            
+        file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parquet'
+        df = pd.read_parquet(file_name)
         dfs.append(df)
 
     dataframes = dict(zip(tickers, dfs))
 
     # Create DataHandler
-    dataloader = DataLoader(dataframes, '1d', start_date, end_date)
+    dataloader = DataLoader(dataframes, '1h', start_date, end_date)
     engine = Engine(dataloader)
     # alpha = BaseAlpha('base_alpha', engine, .1, .05)
-    alpha = EmaCrossover('testEMACross', engine, 'close', 14, 28, .1, .05)
+    alpha = PipMinerStrategy('pip_miner', engine, 5, 24, 6)
 
     backtester = Backtester(dataloader, engine, alpha, 1)
 
