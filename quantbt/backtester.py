@@ -1,7 +1,6 @@
 import uuid
 import pickle # noqa
 import pandas as pd
-# import zstandard as zstd
 
 from typing import List
 from copy import deepcopy, copy
@@ -138,6 +137,13 @@ class Backtester:
         if not analysis_mode:
             print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
 
+
+        # Test :
+        for alpha in self.alphas:
+            if '_signals' in alpha.__dict__:
+                df = pd.DataFrame(alpha._signals)
+                df.to_parquet('alpha_signals.parquet')
+
         return self.engine
 
 
@@ -204,8 +210,8 @@ if __name__ == '__main__':
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
 
-    start_date = '2020-01-02'
-    end_date = '2023-12-31'
+    start_date = '2018-01-01'
+    end_date = '2020-12-29'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -228,19 +234,19 @@ if __name__ == '__main__':
     #     dfs.append(df)
     
     # FOR CRYPTO
-    tickers = ['BTCUSDT']# , 'CELOUSDT', 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
+    tickers = ['BTCUSDT']# 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
 
     dfs = []
 
     for ticker in tickers:
-        file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parquet'
+        file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}_1D.parquet'
         df = pd.read_parquet(file_name)
         dfs.append(df)
 
     dataframes = dict(zip(tickers, dfs))
 
     # Create DataHandler
-    dataloader = DataLoader(dataframes, '1h', start_date, end_date)
+    dataloader = DataLoader(dataframes, '1d', start_date, end_date)
     engine = Engine(dataloader)
     # alpha = BaseAlpha('base_alpha', engine, .1, .05)
     alpha = PipMinerStrategy('pip_miner', engine, 5, 24, 6)

@@ -115,6 +115,13 @@ class PipMinerStrategy(Alpha):
         # Store Trade Durations for each ticker
         self._trade_durations = {ticker : {} for ticker in engine.tickers}
 
+        # Test : Store all the signal dates
+        self._signals = {
+            'date' : [],
+            'ticker' : [],
+            'signal' : []
+        }
+
 
     def _init_miners(self, engine:Engine):
         '''
@@ -133,6 +140,8 @@ class PipMinerStrategy(Alpha):
             # Split the data for training the model
             split_index = int(round(self._train_split_percent * len(data)))
             data_train = data[:split_index]
+
+            debug(ticker, data_train)
 
             # Train the miner 
             miner.train(data_train)
@@ -158,6 +167,14 @@ class PipMinerStrategy(Alpha):
         # Decision-making / Signal-generating Algorithm
         alpha_long, alpha_short = self.signal_generator(eligibles)
         eligible_assets = list(set(alpha_long + alpha_short))
+
+        # Store signal
+        for ticker in datas.keys():
+            bar = datas[ticker]
+            signal = 1 if ticker in alpha_long else -1 if ticker in alpha_short else 0
+            self._signals['date'].append(bar.timestamp)
+            self._signals['ticker'].append(ticker)
+            self._signals['signal'].append(signal)
         
         for ticker in eligible_assets:
             bar = datas[ticker]
@@ -212,6 +229,7 @@ class PipMinerStrategy(Alpha):
             # Add signalss
             if signal > 0:
                 alpha_long.append(ticker)
+                
             elif signal < 0:
                 alpha_short.append(ticker)
 
@@ -258,10 +276,10 @@ class PipMinerStrategy(Alpha):
             
             self._trade_durations[ticker][trade_id] += 1
             
-            if self._trade_durations[ticker][trade_id] >= self.params['hold_period']:
+            if self._trade_durations[ticker][trade_id] >= (self.params['hold_period'] + 1):
                 remove.append(trade)
 
         # Remove the trades
         for trade in remove:
             self.close_trade(trade, bar, None)
-            print(f"Removed Trade {trade.id}")
+            # print(f"Removed Trade {trade.id}. \nStart Date : {trade.entry_timestamp}, End Date : {trade.exit_timestamp}")
