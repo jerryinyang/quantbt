@@ -109,7 +109,7 @@ class PipMinerStrategy(Alpha):
         self._miners = self._init_miners(engine)
 
         # Store Deque (windows) of price data for miner predictions
-        self._windows = {ticker : deque([np.nan] * lookback, maxlen=lookback+1) for ticker in engine.tickers}
+        self._windows = {ticker : deque([np.nan] * (lookback + 1), maxlen=lookback+1) for ticker in engine.tickers}
         self.warmup_period = 1
 
         # Store Trade Durations for each ticker
@@ -127,6 +127,8 @@ class PipMinerStrategy(Alpha):
         '''
         Creates and Trains PipMiner Instances for all tickers in the engine data.
         '''
+        print('Training Models')
+
         miners = {}
         
         # Loop Throuhgh All Ticker Data in the Engine
@@ -141,14 +143,13 @@ class PipMinerStrategy(Alpha):
             split_index = int(round(self._train_split_percent * len(data)))
             data_train = data[:split_index]
 
-            debug(ticker, data_train)
-
             # Train the miner 
             miner.train(data_train)
 
             # Add miner to miners dictionary
             miners[ticker] = miner
 
+        print('Models trained successfully.')
         return miners
 
 
