@@ -50,7 +50,7 @@ def fetch_crypto_data(symbol, resolution, start_time = datetime.datetime.now() -
 
 if __name__ == '__main__':
     # Download Bulk Data
-    symbols = ['BTCUSDT', 'ETHUSDT', 'GMTUSDT', 'CELOUSDT', 'DOGEUSDT', 'SOLUSDT']
+    symbols = ['BTCUSDT']#, 'ETHUSDT', 'GMTUSDT', 'CELOUSDT', 'DOGEUSDT', 'SOLUSDT']
 
     for symbol in symbols:
 
