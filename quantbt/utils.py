@@ -1,8 +1,11 @@
-from datetime import datetime 
 import logging
 import os
+
 from bisect import bisect_right
-from typing import Literal
+from datetime import datetime 
+from enum import Enum
+from typing import Literal, Union
+
 
 class Bar:
     def __init__(
@@ -112,7 +115,6 @@ class Logger(logging.Logger):
         # Add the handler to the logger
         self.addHandler(custom_handler)
         
-
 
 class ObservableList(list):
     def __init__(self, callback, *args, **kwargs):
@@ -243,7 +245,110 @@ class Source:
             return (bar.open + bar.high + bar.low + bar.close) / 4
 
 
-# Resolution('1m')
+class Timeframe(Enum):
+    TIMEFRAME_1M = 1
+    TIMEFRAME_5M = 5
+    TIMEFRAME_15M = 15
+    TIMEFRAME_30M = 30
+    TIMEFRAME_1H = 60
+    TIMEFRAME_4H = 240
+    TIMEFRAME_1D = 1440
+    TIMEFRAME_1W = 7 * 1440
+
+
+class Resolution:
+    RESOLUTION_MAP = {
+        '1': Timeframe.TIMEFRAME_1M, '1M': Timeframe.TIMEFRAME_1M, 'M1': Timeframe.TIMEFRAME_1M, '1MIN': Timeframe.TIMEFRAME_1M,
+        '5': Timeframe.TIMEFRAME_5M, '5M': Timeframe.TIMEFRAME_5M, 'M5': Timeframe.TIMEFRAME_5M, '5MIN': Timeframe.TIMEFRAME_5M,
+        '15': Timeframe.TIMEFRAME_15M, '15M': Timeframe.TIMEFRAME_15M, 'M15': Timeframe.TIMEFRAME_15M, '15MIN': Timeframe.TIMEFRAME_15M,
+        '30': Timeframe.TIMEFRAME_30M, '30M': Timeframe.TIMEFRAME_30M, 'M30': Timeframe.TIMEFRAME_30M, '30MIN': Timeframe.TIMEFRAME_30M,
+        '60': Timeframe.TIMEFRAME_1H, '1H': Timeframe.TIMEFRAME_1H, 'H1': Timeframe.TIMEFRAME_1H, 'H': Timeframe.TIMEFRAME_1H,
+        '240': Timeframe.TIMEFRAME_4H, 'H4': Timeframe.TIMEFRAME_4H, '4H': Timeframe.TIMEFRAME_4H,
+        'D': Timeframe.TIMEFRAME_1D, '1D': Timeframe.TIMEFRAME_1D,
+        'W': Timeframe.TIMEFRAME_1W, '1W': Timeframe.TIMEFRAME_1W
+    }
+
+
+    def __init__(self, value):
+        if not value:
+            raise ValueError('Cannot initialize a resolution with a value of None')
+        
+        if isinstance(value, int):
+            value = str(value)
+        
+        self.timeframe = self._assign(value)
+        self.value = self.timeframe.value
+
+    def _assign(self, value):
+        if value not in self.RESOLUTION_MAP.keys():
+            value = '1'
+            logging.warning(f"Resolution `{value}` is not recognized. Defaulting to `1MIN`")    
+        
+        return self.RESOLUTION_MAP.get(value.upper(), value)
+    
+    def __eq__(self, other):
+        if isinstance(other, str) and (other in self.RESOLUTION_MAP):
+            other = self.RESOLUTION_MAP[other].value
+            
+        if isinstance(other, Resolution):
+            return self.value == other.value
+        elif isinstance(other, Union[int, float]):
+            return self.value == other
+        else:
+            raise TypeError("unsupported operand type(s) for ==: 'Resolution' and '{}'".format(type(other).__name__))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        if isinstance(other, str) and (other in self.RESOLUTION_MAP):
+            other = self.RESOLUTION_MAP[other].value
+            
+        if isinstance(other, Resolution):
+            return self.value < other.value
+        elif isinstance(other, Union[int, float]):
+            return self.value < other
+        else:
+            raise TypeError("unsupported operand type(s) for <: 'Resolution' and '{}'".format(type(other).__name__))
+
+    def __le__(self, other):
+        if isinstance(other, str) and (other in self.RESOLUTION_MAP):
+            other = self.RESOLUTION_MAP[other].value
+            
+        if isinstance(other, Resolution):
+            return self.value <= other.value
+        elif isinstance(other, Union[int, float]):
+            return self.value <= other
+        else:
+            raise TypeError("unsupported operand type(s) for <=: 'Resolution' and '{}'".format(type(other).__name__))
+
+    def __gt__(self, other):
+        if isinstance(other, str) and (other in self.RESOLUTION_MAP):
+            other = self.RESOLUTION_MAP[other].value
+
+        if isinstance(other, Resolution):
+            return self.value > other.value
+        elif isinstance(other, Union[int, float]):
+            return self.value > other
+        else:
+            raise TypeError("unsupported operand type(s) for >: 'Resolution' and '{}'".format(type(other).__name__))
+
+    def __ge__(self, other):
+        if isinstance(other, str) and (other in self.RESOLUTION_MAP):
+            other = self.RESOLUTION_MAP[other].value
+
+        if isinstance(other, Resolution):
+            return self.value >= other.value
+        elif isinstance(other, Union[int, float]):
+            return self.value >= other
+        else:
+            raise TypeError("unsupported operand type(s) for >=: 'Resolution' and '{}'".format(type(other).__name__))
+
+x = Resolution(60)
+
+print(min(x, 1e5))
+
+
 def clear_terminal():
         # Check the operating system
         if os.name == "posix":  # For Linux and macOS

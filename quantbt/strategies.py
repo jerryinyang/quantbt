@@ -95,15 +95,16 @@ class PipMinerStrategy(Alpha):
     params = {
         'n_pivots' : 5, 
         'lookback' : 24, 
-        'hold_period' : 6
+        'hold_period' : 6,
+        'n_clusters' : 85
     }
 
 
-    def __init__(self, name: str, engine: Engine, n_pivots:int, lookback:int, hold_period:int, train_split_percent:float=0.6) -> None:
+    def __init__(self, name: str, engine: Engine, n_pivots:int, lookback:int, hold_period:int, n_clusters:int, train_split_percent:float=0.6) -> None:
         super().__init__(name, engine)
 
         # Update Strategy Parameters
-        self.params.update(n_pivots=n_pivots, lookback=lookback, hold_period=hold_period)
+        self.params.update(n_pivots=n_pivots, lookback=lookback, hold_period=hold_period, n_clusters=n_clusters)
 
         self._train_split_percent = train_split_percent
         self._miners = self._init_miners(engine)
@@ -207,7 +208,7 @@ class PipMinerStrategy(Alpha):
                 self.sell(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
 
             # Scan for Exits
-            if len(self.trades[bar.ticker]):
+            if len(self._trades[bar.ticker]):
                 self.scan_exits(bar)
 
         return alpha_long, alpha_short 
@@ -264,7 +265,7 @@ class PipMinerStrategy(Alpha):
         ticker = bar.ticker
 
         # Read self.trades list and track the number of bars they have been open
-        trades = self.trades[ticker]
+        trades = self._trades[ticker]
         remove = []
 
         # Loop through each trade for every ticker

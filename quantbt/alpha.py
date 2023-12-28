@@ -33,12 +33,12 @@ class Alpha(Observer, ABC):
         self.warmup_period = 0
 
         # Store Trades, History
-        self.orders : List[Order] = []
-        self.trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.engine.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
-        self.history : List[Trade] = []
+        self._orders : List[Order] = []
+        self._trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.engine.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
+        self._history : List[Trade] = []
 
         # Store Allocations
-        self.allocations : Dict[str, float] = {}
+        self._allocations : Dict[str, float] = {}
 
         # Add self to engine.observers
         self.engine.add_observer(self)
@@ -68,7 +68,7 @@ class Alpha(Observer, ABC):
         '''
 
         # Update the allocations
-        self.allocations.update(allocation_per_ticker)
+        self._allocations.update(allocation_per_ticker)
         
         return False
         
@@ -87,7 +87,7 @@ class Alpha(Observer, ABC):
         ticker = bar.ticker 
         
         # Calculate the risk amount, based on available balance
-        return balance * self.allocations[ticker]
+        return balance * self._allocations[ticker]
         
 
     def update(self, value : Order|Trade) -> None:
@@ -101,31 +101,33 @@ class Alpha(Observer, ABC):
             
             # Newly Accepted Order
             if order.status == Order.Status.Accepted:
-                if order not in self.orders:
-                    self.orders.append(order)
+                if order not in self._orders:
+                    self._orders.append(order)
 
             # Newly Removed Order
             elif order.status in [Order.Status.Filled, Order.Status.Canceled]:
                 # Confirm that self.orders contain this order
-                if order in self.orders:
-                    self.orders.remove(order)
+                if order in self._orders:
+                    self._orders.remove(order)
 
         elif isinstance(value, Trade):
             trade = value 
 
             # Add Active Trades to self.trades
             if trade.status == Trade.Status.Active:
-                self.trades[trade.ticker][trade.id] = trade
+                self._trades[trade.ticker][trade.id] = trade
 
             # Add Closed Trades to self.history
             elif trade.status == Trade.Status.Closed:
                 # Remove the trade from self.trade dictionary (key = trade_id)
-                self.trades[trade.ticker].pop(trade.id)
-                self.history.append(trade)
+                self._trades[trade.ticker].pop(trade.id)
+                self._history.append(trade)
 
 
+    def _compute_signals(self):
+        pass
 
-    # HANDLE ORDERS AND TRADES
+    # region --- HANDLE ORDERS AND TRADES
     def buy(self, bar, price, size:float, exectype:Order.ExecType, 
             stoplimit_price:float=None, parent_id:str=None,
             exit_profit:float=None, exit_loss:float=None,
@@ -186,6 +188,7 @@ class Alpha(Observer, ABC):
             for trade in trades:
                 self.close_trade(trade, bar, price)
 
+    # endregion
 
     # PICKLE-COMPATIBILITY
     def __getstate__(self):
@@ -270,6 +273,9 @@ class BaseAlpha(Alpha):
         self.__init__(self.name, engine, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
 
+
+    def warmup(self, datas: Dict[str, Bar]):
+        return super().warmup(datas)
 
 class EmaCrossover(Alpha):
     params = {}
@@ -381,4 +387,3 @@ class EmaCrossover(Alpha):
 
         self.__init__(self.name, engine, self.source, self.fast_length, self.slow_length, self.profit_perc, self.loss_perc)
         self.logger.info(f'Alpha {self.name} successfully reset.')
-

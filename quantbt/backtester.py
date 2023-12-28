@@ -2,7 +2,7 @@ import uuid
 import pickle # noqa
 import pandas as pd
 
-from typing import List
+from typing import List, Dict, Literal, Union
 from copy import deepcopy, copy
 from pathlib import Path
 
@@ -11,7 +11,7 @@ from alpha import Alpha
 from orders import Order
 from dataloader import DataLoader
 from sizers import Sizer
-from utils import Bar, Logger # noqa: F401
+from utils import Bar, Logger, Resolution # noqa: F401
 
 exectypes = Order.ExecType
 
@@ -19,59 +19,65 @@ class Backtester:
     _original_dfs : dict[pd.DataFrame] = None
     logger = Logger('logger_backtester')
     backtest_storage_path = Path('data/backtests')
-    
-    def __init__(self, 
-                 dataloader : DataLoader, 
-                 engine : Engine, 
-                 alphas : list[Alpha], 
-                 max_allocation : float,
-                 analysis_mode : bool = False) -> None:
+
+    params = {
+        'max_exposure' : 1
+    }
+
+    def __init__(self, start_date:str, end_date:str, max_exposure:float) -> None:
         
         self.id = str(uuid.uuid4())
-        self.datas = dataloader
-        self.engine = engine
+        self.start_date = start_date
+        self.end_date = end_date
+        self.params.update(max_exposure=max_exposure)
 
-        # Add Alphas into backtester alphas list
-        self.alphas : List[Alpha] = self._init_alpha(alphas)
-        self.max_allocation = max_allocation
-
-        # Add a Sizer
-        self.sizer = Sizer(self.engine, self.alphas, max_allocation)
-
-        # If Backtester is being initialized within and Analyzer, don't modify the initial_engine
-        if not analysis_mode:
-            self._original_dfs = deepcopy(dataloader.dataframes)
-
-
-    def _init_alpha(self, alphas: Alpha|list[Alpha]):
-        if not alphas:
-            return []
-        
-        if isinstance(alphas, list):
-            for alpha in alphas:
-                alpha.reset_alpha(self.engine)
-            return alphas
-
-        else:
-            alphas.reset_alpha(self.engine)
-            return [alphas]
-        
+        self.alphas : List[Alpha] = None
+        self.datas : DataLoader = None
+        self.engine : Engine = None
+        self.sizer : Sizer = None
     
+        self._datas_uninit : Dict[Literal['tickers', 'dataframes', 'resolution']] = {
+            'tickers' : [], # Stores each ticker added
+            'dataframes' : [], # Stores each dataframe added
+            'resolution' : Resolution('D') # Stores the general (minimum) resolution for the backtest
+        } # Stores Uninitialized Data
+
+        self._alphas_uninit : List[Alpha] = [] # Stores Uninitialized Alphas
+
+
     def add_alpha(self, alpha:Alpha):
-        alpha_list = self._init_alpha(self.engine)
+        assert (alpha is not None) and (isinstance(alpha, Alpha)), '`alpha` passed is not an Alpha object'
+        self._alphas_uninit.append(alpha)
 
-        for alpha in alpha_list:
-            self.alphas.append(alpha)
-
-        # Add alpha to engine observers
-        self.engine.add_observer(alpha)
-
-        # Reset Sizer
-        self.sizer = Sizer(self.engine, self.alphas)
+        self.logger.info(f"Alpha `{alpha.name}` added.")
 
 
-    def backtest(self, analysis_mode=False):
+    def add_data(self, ticker:str, dataframe:pd.DataFrame, resolution:Union[str,int]):
+        '''Add Dataframes to self._datas'''
+
+        # Assert Data Types and Content
+        assert ticker is not None, '`ticker` cannot be None.'
+        assert (dataframe is not None) and (not dataframe.empty), '`dataframe` must contain some data.'
+        assert set(['open', 'high', 'low', 'close', 'volume']).issubset(dataframe.columns.str.lower())
+
+        resolution = Resolution(resolution) # Create a resolution instance
+
+        # Append New Data
+        self._datas_uninit['tickers'].append(ticker.upper())
+        self._datas_uninit['dataframes'].append(dataframes)
+        self._datas_uninit['resolution'] = min(self._datas_uninit['resolution'], resolution)
+
+        # Feedback
+        self.logger.info(f"{ticker} data added.")
+
+
+    def backtest(self, analysis_mode:bool=False):
         if not analysis_mode:
+            # Initialize the backtester components
+            self._initiate_backtest()
+
+            # Store the initialized data
+            self._original_dfs = deepcopy(self.datas.dataframes)
             print('Initiating Backtest')
         
         # Iterate through each bar/index (timestamp) in the backtest range
@@ -147,6 +153,62 @@ class Backtester:
         return self.engine
 
 
+    def _initiate_backtest(self):
+        '''
+        Initializes the components of the backtester, before running a backtest
+        '''
+        # Initialize the Dataloader
+        self._init_dataloader()
+
+        # Initialize the Engine
+        self.engine = Engine(self.datas)
+        
+        # Initialize the Alphas
+        self._init_alphas
+
+        # Initialize the Sizer
+        self.sizer = Sizer(self.engine, self.alphas, self.params.get('max_exposure', 1))
+
+
+    def _init_dataloader(self):
+        '''Create Dataloader for Backtester Engine'''
+        
+        # Assert Available Data
+        if (len(self._datas_uninit['resolution']) == 0) and (len(self._datas_uninit['dataframes']) == 0):
+            self.logger.warning('No data available for backtest.')
+
+        dataframes = { self._datas_uninit['tickers'][index] : self._datas_uninit['tickers'][index]
+                      for index in len(self._datas_uninit['tickers'])}
+        resolution = self._datas_uninit['resolution']
+
+        # Set self.datas
+        self.datas = DataLoader(dataframes=dataframes, resolution=resolution, start_date=self.start_date, end_date=end_date)
+
+
+    def _init_alphas(self):
+        '''
+        Initializes all added alphas in the backtester
+        '''
+
+        if len(self._alphas_uninit) < 0: 
+            self.logger.warning('No alphas have been added for backtesting')
+
+        # Assert Engine has been created
+        assert self.engine is not None, 'Backtester `engine` has not been initialized.'
+        
+        self.alphas = []
+
+        # Reset all alphas
+        for alpha in self._alphas_uninit:
+            alpha.reset_alpha(self.engine)
+        
+            # Add alpha to engine observers
+            self.engine.add_observer(alpha)
+
+            # Add Initialized Alpha
+            self.alphas.append(alpha)
+        
+    
     def reset_backtester(self, dataframes:pd.DataFrame):
         '''
         Resets the backtester for another run. Resets the engine with new data.
@@ -167,8 +229,6 @@ class Backtester:
 
 
     def copy(self, deep:bool=False):
-        # Regenerate 
-
         # Create a copy 
         backtester = deepcopy(self) if deep else copy(self)
 
@@ -182,6 +242,7 @@ class Backtester:
     def original_dataframes(self):
         return self._original_dfs
     
+
     @original_dataframes.setter
     def original_dataframes(self, dataframes):
         self._original_dfs = dataframes
@@ -196,7 +257,6 @@ class Backtester:
     def __setstate__(self, state):
         # Customize the object reconstruction
         self.__dict__.update(state)
-
 
 
 if __name__ == '__main__':
@@ -248,8 +308,9 @@ if __name__ == '__main__':
     # Create DataHandler
     dataloader = DataLoader(dataframes, '1d', start_date, end_date)
     engine = Engine(dataloader)
+
     # alpha = BaseAlpha('base_alpha', engine, .1, .05)
-    alpha = PipMinerStrategy('pip_miner', engine, 5, 24, 6)
+    alpha = PipMinerStrategy('pip_miner', engine, 5, 24, 6, 85)
 
     backtester = Backtester(dataloader, engine, alpha, 1)
 
