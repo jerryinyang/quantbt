@@ -15,15 +15,17 @@ class Sizer:
         self.strategy_weights = {alpha.name : 1 for alpha in self.alphas} # Weights per strategy    
 
 
-    def calculate_risk(self):
+    def get_allocation(self):
+        # Check if the lengths of asset_weights and self.strategy_weights match
+        if (not self.engine.tickers) or (not self.alphas):
+            self.logger.exception("No Assets available in the engine.")
+            return
+                                  
 
         # Check if the lengths of asset_weights and self.strategy_weights match
-        if not self.engine.tickers:
-            self.logger.exception("Assets cannot be empty.", ValueError('Engine contains no price data.'))
-                                  
-        # Check if the lengths of asset_weights and self.strategy_weights match
         if not self.alphas:
-            self.logger.exception("Alphas list cannot be empty.", ValueError('Sizers contains no alphas.'))
+            self.logger.warning("Sizer contains no alphas.")
+            return
 
        # Check if the sum of weights is 1 for both assets and strategies
         if not self._is_close(sum(self.asset_weights.values()), 1):        
@@ -52,6 +54,7 @@ class Sizer:
         """
         Adjust the maximum exposure, ticker weights and strategy weights based on current performance state.
         """
+        return
 
 
     def _is_close(self, a : float, b : float, rel_tol : float=1e-9, abs_tol : float=0.0) -> bool :
@@ -62,6 +65,7 @@ class Sizer:
     def __getstate__(self):
         state = self.__dict__.copy()
         return state
+
 
     def __setstate__(self, state):
         # Customize the object reconstruction

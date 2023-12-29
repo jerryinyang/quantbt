@@ -246,14 +246,14 @@ class Source:
 
 
 class Timeframe(Enum):
-    TIMEFRAME_1M = 1
-    TIMEFRAME_5M = 5
-    TIMEFRAME_15M = 15
-    TIMEFRAME_30M = 30
-    TIMEFRAME_1H = 60
-    TIMEFRAME_4H = 240
-    TIMEFRAME_1D = 1440
-    TIMEFRAME_1W = 7 * 1440
+    TIMEFRAME_1M = (1, '1min')
+    TIMEFRAME_5M = (5, '5min')
+    TIMEFRAME_15M = (15, '15min')
+    TIMEFRAME_30M = (30, '30min')
+    TIMEFRAME_1H = (60, '1H')
+    TIMEFRAME_4H = (240, '4H')
+    TIMEFRAME_1D = (1440, '1D')
+    TIMEFRAME_1W = (7 * 1440, '1W')
 
 
 class Resolution:
@@ -264,8 +264,8 @@ class Resolution:
         '30': Timeframe.TIMEFRAME_30M, '30M': Timeframe.TIMEFRAME_30M, 'M30': Timeframe.TIMEFRAME_30M, '30MIN': Timeframe.TIMEFRAME_30M,
         '60': Timeframe.TIMEFRAME_1H, '1H': Timeframe.TIMEFRAME_1H, 'H1': Timeframe.TIMEFRAME_1H, 'H': Timeframe.TIMEFRAME_1H,
         '240': Timeframe.TIMEFRAME_4H, 'H4': Timeframe.TIMEFRAME_4H, '4H': Timeframe.TIMEFRAME_4H,
-        'D': Timeframe.TIMEFRAME_1D, '1D': Timeframe.TIMEFRAME_1D,
-        'W': Timeframe.TIMEFRAME_1W, '1W': Timeframe.TIMEFRAME_1W
+        '1440': Timeframe.TIMEFRAME_1D, 'D': Timeframe.TIMEFRAME_1D, '1D': Timeframe.TIMEFRAME_1D,
+        '10080': Timeframe.TIMEFRAME_1W, 'W': Timeframe.TIMEFRAME_1W, '1W': Timeframe.TIMEFRAME_1W,
     }
 
 
@@ -273,16 +273,19 @@ class Resolution:
         if not value:
             raise ValueError('Cannot initialize a resolution with a value of None')
         
-        if isinstance(value, int):
-            value = str(value)
+        if isinstance(value, int|float):
+            value = str(int(round(value)))
         
         self.timeframe = self._assign(value)
-        self.value = self.timeframe.value
+        self.name = self.timeframe.value[1]
+        self.value = self.timeframe.value[0]
 
     def _assign(self, value):
+        value = value.upper()
+
         if value not in self.RESOLUTION_MAP.keys():
             value = '1'
-            logging.warning(f"Resolution `{value}` is not recognized. Defaulting to `1MIN`")    
+            logging.warning(f"Resolution `{value}` is not recognized. Defaulting to `1D`")    
         
         return self.RESOLUTION_MAP.get(value.upper(), value)
     
@@ -343,10 +346,6 @@ class Resolution:
             return self.value >= other
         else:
             raise TypeError("unsupported operand type(s) for >=: 'Resolution' and '{}'".format(type(other).__name__))
-
-x = Resolution(60)
-
-print(min(x, 1e5))
 
 
 def clear_terminal():
