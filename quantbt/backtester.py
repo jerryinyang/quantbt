@@ -82,13 +82,16 @@ class Backtester:
         self.logger.info(f"Alpha `{kwargs['name']}` added.")
 
 
-    def add_data(self, ticker:str, dataframe:pd.DataFrame):
+    def add_data(self, ticker:str, dataframe:pd.DataFrame, date_column_index=-1):
         '''Add Dataframes to self._datas'''
 
         # Assert Data Types and Content
         assert ticker is not None, '`ticker` cannot be None.'
         assert (dataframe is not None) and (not dataframe.empty), '`dataframe` must contain some data.'
         assert set(['open', 'high', 'low', 'close', 'volume']).issubset(dataframe.columns.str.lower())
+
+        if date_column_index >= 0:
+            dataframe.rename(columns={dataframe.columns[date_column_index]: 'date'}, inplace=True)
 
         # Append New Data
         self._datas_uninit['tickers'].append(ticker.upper())
@@ -202,7 +205,7 @@ class Backtester:
                       for index in range(len(self._datas_uninit['tickers']))}
 
         # Set self.datas
-        self.datas = DataLoader(dataframes=dataframes, start_date=self.start_date, end_date=end_date)
+        self.datas = DataLoader(dataframes=dataframes, start_date=self.start_date, end_date=self.end_date)
 
 
     def _init_alphas(self):
@@ -223,8 +226,6 @@ class Backtester:
 
             # Instantiate the alpha object
             alpha = alpha(**args)
-
-            alpha.reset_alpha(self.engine)
         
             # Add alpha to engine observers
             self.engine.add_observer(alpha)
@@ -291,12 +292,12 @@ if __name__ == '__main__':
     import os # noqa
     
     from alpha import BaseAlpha, EmaCrossover # noqa
-    from strategies import PipMinerStrategy
+    from strategies import PipMinerStrategy # noqa
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
 
-    start_date = '2018-01-01'
-    end_date = '2020-12-29'
+    start_date = '2020-01-01'
+    end_date = '2022-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -324,9 +325,9 @@ if __name__ == '__main__':
     dfs = []   
 
     # Create DataHandler
-    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=1)
-    backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
-    # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
+    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.2)
+    # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
+    backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
 
     for ticker in tickers:
         try:
@@ -336,17 +337,16 @@ if __name__ == '__main__':
             file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.csv'
             df = pd.read_csv(file_name)
         
-        backtester.add_data(ticker=ticker, dataframe=df)
+        backtester.add_data(ticker=ticker, dataframe=df) #, date_column_index=0)
     
 
     trades = backtester.backtest()
 
-    # # Use Reporter
-    # reporter = AutoReporter('full', 'full')
-    # reporter.compute_report(backtester)
-    # reporter.compute_report(backtester)
+    # Use Reporter
+    reporter = AutoReporter('full', 'full')
+    reporter.compute_report(backtester)
 
-    # # Pickle the instance
-    # with open('reporter.pkl', 'wb') as file:
-    #     pickle.dump(reporter, file)
+    # Pickle the instance
+    with open('reporter.pkl', 'wb') as file:
+        pickle.dump(reporter, file)
 

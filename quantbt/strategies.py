@@ -89,7 +89,6 @@ class BaseAlpha(Alpha):
         self.logger.info(f'Alpha {self.name} successfully reset.')
 
 
-
 class PipMinerStrategy(Alpha):
 
     params = {
@@ -146,9 +145,6 @@ class PipMinerStrategy(Alpha):
 
             # Train the miner 
             miner.train(data_train)
-
-            debug(data_train)
-            exit()
 
             # Add miner to miners dictionary
             miners[ticker] = miner

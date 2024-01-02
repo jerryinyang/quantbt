@@ -262,7 +262,7 @@ class BaseAlpha(Alpha):
         alpha_long = [list_scores[0]] 
         alpha_short = [list_scores[-1]] 
 
-        return ['AAPL'], [] # alpha_long, alpha_short       
+        return eligibles, [] # alpha_long, alpha_short       
 
 
     def reset_alpha(self, engine:Engine):
