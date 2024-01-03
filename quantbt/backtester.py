@@ -2,6 +2,7 @@ import inspect
 import uuid
 import pickle # noqa
 import pandas as pd
+import numpy as np
 
 from typing import List, Dict, Literal, Tuple
 from copy import deepcopy, copy
@@ -43,6 +44,8 @@ class Backtester:
         } # Stores Uninitialized Data
 
         self._alphas_uninit : List[Tuple[Alpha, Dict]] = [] # Stores Uninitialized Alphas
+        
+        self._test_signals : Dict[str, List[int]] = {}
 
 
     def add_alpha(self, alpha:Alpha, **kwargs):
@@ -109,7 +112,11 @@ class Backtester:
             # Store the initialized data
             self._original_dfs = deepcopy(self.datas.dataframes)
             print('Initiating Backtest')
-        
+
+        # Initiate empty lists for each ticker
+        for ticker in self.engine.tickers:
+            self._test_signals[ticker] = np.zeros(len(self.engine.portfolio.dataframe)) # Create a signal list of zeros
+
         # Iterate through each bar/index (timestamp) in the backtest range
         for bar_index in self.engine.portfolio.dataframe.index:
             date = self.engine.portfolio.dataframe.loc[bar_index, 'timestamp']
@@ -117,7 +124,6 @@ class Backtester:
             # Create the bar objects for easier access to data
             bars = {}
             for ticker in self.engine.tickers:
-
                 bar = Bar(
                     open=self.engine.dataframes[ticker].loc[date, 'open'],
                     high=self.engine.dataframes[ticker].loc[date, 'high'],
@@ -163,6 +169,12 @@ class Backtester:
                     allocation[asset_name] = allocation_matrix[asset_name][alpha.name]
 
                 alpha_long, alpha_short = alpha.next(eligibles=eligible_assets, datas=bars, allocation_per_ticker=allocation)
+
+                # Store Signals
+                for ticker in alpha_long:
+                    self._test_signals[ticker][bar_index] = 1
+                for ticker in alpha_short:
+                    self._test_signals[ticker][bar_index] = -1                  
 
                 non_eligible_assets = list(set(eligible_assets) - set(alpha_long + alpha_short))
                 for ticker in non_eligible_assets:
@@ -296,8 +308,8 @@ if __name__ == '__main__':
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
 
-    start_date = '2020-01-01'
-    end_date = '2022-12-31'
+    start_date = '2018-01-01'
+    end_date = '2018-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -326,12 +338,12 @@ if __name__ == '__main__':
 
     # Create DataHandler
     backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.2)
-    # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
-    backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
+    backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
+    # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
 
     for ticker in tickers:
         try:
-            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parquet'
+            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parqueet'
             df = pd.read_parquet(file_name)
         except Exception:
             file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.csv'

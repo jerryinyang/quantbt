@@ -225,7 +225,7 @@ class PipMinerStrategy(Alpha):
             miner = self._miners[ticker]
             
             # Generate signal using the miner
-            signal = miner.generate_signal(window)
+            signal = miner.generate_signal(np.log(window))
 
             # Add signalss
             if signal > 0:

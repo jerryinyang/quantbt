@@ -5,7 +5,7 @@
 extend-include = [
     ".env", 
     "root.tmp", 
-    "test.*", 
+    "test.ipynb", 
     "*.vuerd.json", 
     "*.csv", 
     "*.parquet", 
@@ -15,5 +15,5 @@ extend-include = [
     "/databento", 
     "*.log", 
     "__init__.py",
-    "~/anaconda3/envs/"
+    "~/anaconda3/envs/",
 ]

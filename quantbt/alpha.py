@@ -259,8 +259,8 @@ class BaseAlpha(Alpha):
         if not list_scores:
             return [], []
         
-        alpha_long = [list_scores[0]] 
-        alpha_short = [list_scores[-1]] 
+        # alpha_long = [list_scores[0]] 
+        # alpha_short = [list_scores[-1]] 
 
         return eligibles, [] # alpha_long, alpha_short       
 
