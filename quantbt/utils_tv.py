@@ -36,3 +36,27 @@ def ternary(condition, value_true, value_false):
         return value_true
 
     return value_false
+
+
+def nz(value, replacement=0):
+    """
+    Replace missing or not available values with a specified replacement.
+
+    Parameters:
+    - value: Any, the value to be checked for being missing or not available.
+    - replacement: Any, the value to be returned if 'value' is missing or not available. Default is 0.
+
+    Returns:
+    Any: Either the original 'value' or the specified 'replacement' based on whether 'value' is missing or not.
+
+    Example:
+    >>> nz(42)
+    42
+
+    >>> nz(None)
+    0
+
+    >>> nz(float('nan'), replacement=99)
+    99
+    """
+    return ternary(na(value), replacement, value)

@@ -2,8 +2,10 @@ import math
 import numpy as np
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Any, Literal, Union
+from typing import Any, Literal, Union, List
 
+import pandas as pd
+import pandas_ta as ta
 
 import utils_tv as tv
 from utils import Bar, Source, Logger
@@ -23,6 +25,12 @@ class Indicator(ABC):
     @abstractmethod
     def update(self, bar : Bar):
         self.value = bar.close
+
+
+    @property
+    @abstractmethod
+    def is_ready(self):
+        return False
 
 
 class EMA(Indicator):
@@ -240,3 +248,77 @@ class HawkesProcess(Indicator):
         self._hawkes.appendleft(hawkes)
         self._upper.appendleft(upper_band)
         self._lower.appendleft(lower_band)
+
+
+
+class ATR(Indicator):
+    
+    params = {
+        'period' : 14
+    }
+
+    properties = {
+        'max_lookback' : 500
+    }
+
+    def __init__(self, 
+                 name : str, 
+                 period : int) -> None:
+        
+        self.name = name
+        self.params.update(period=period)
+        
+        self.value = deque([], maxlen=self.properties['max_lookback'])
+        self.window : List[Bar] = deque([], maxlen=period+20)
+
+
+    def update(self, bar : Union[Bar, Any]):
+        # Add New Data to Data Window
+        self.window.appendleft(bar)
+
+        # Check if data window is filled
+        if self.is_ready:
+            return 
+
+        # Convert Data to list and reverse the order
+        data = list(self.window)
+        data.reverse()
+
+        # Extract OHLC data from each bar into a dictionary
+        data_ohlc = {
+            'time' : [], 
+            'high' : [],
+            'low' : [],
+            'close' : [],
+        }
+
+        for bar in data:
+            data_ohlc['time'].append(bar.timestamp)
+            data_ohlc['high'].append(bar.high)
+            data_ohlc['low'].append(bar.low)
+            data_ohlc['close'].append(bar.close)
+
+        # Create a dataframe with the values
+        data = pd.DataFrame(data_ohlc)
+        data['atr'] = ta.atr(data['high'], data['low'], data['close'], length=self.params.get('period', 14))
+        atr = data['atr']
+        value = atr.iloc[-1]
+
+        # Add new value to self.value        
+        self.value.appendleft(value)
+        
+        print(data.iloc[-1])
+
+        return value
+
+    @property
+    def is_ready(self):
+        return len(self.window) < self.window.maxlen
+        
+
+    def __getitem__(self, index):
+        if index > (len(self.value) - 1):
+            self.logger.warning('Index exceeds available data.')
+            return
+        
+        return self.value[index]

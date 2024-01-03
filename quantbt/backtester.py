@@ -14,6 +14,7 @@ from orders import Order
 from dataloader import DataLoader
 from sizers import Sizer
 from utils import Bar, Logger, debug # noqa: F401
+from indicators import ATR
 
 exectypes = Order.ExecType
 
@@ -46,6 +47,8 @@ class Backtester:
         self._alphas_uninit : List[Tuple[Alpha, Dict]] = [] # Stores Uninitialized Alphas
         
         self._test_signals : Dict[str, List[int]] = {}
+
+        self.atr = ATR('new atr', 14)
 
 
     def add_alpha(self, alpha:Alpha, **kwargs):
@@ -135,6 +138,7 @@ class Backtester:
                     resolution=self.datas.resolution,
                     ticker=ticker
                 )
+                self.atr.update(bar)
                 bars[ticker] = bar
 
             # If Date is not the first date
@@ -308,8 +312,8 @@ if __name__ == '__main__':
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
 
-    start_date = '2018-01-01'
-    end_date = '2018-12-31'
+    start_date = '2023-06-01'
+    end_date = '2023-08-01'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -338,8 +342,8 @@ if __name__ == '__main__':
 
     # Create DataHandler
     backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.2)
-    backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
-    # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
+    # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
+    backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
 
     for ticker in tickers:
         try:
