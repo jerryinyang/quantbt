@@ -1,6 +1,6 @@
 import inspect
 import uuid
-import pickle # noqa
+import pickle
 import pandas as pd
 import numpy as np
 
