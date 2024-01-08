@@ -2,7 +2,7 @@ import inspect
 import uuid
 import pickle
 import pandas as pd
-import numpy as np
+import numpy as np # noqa
 
 from typing import List, Dict, Literal, Tuple
 from copy import deepcopy, copy
@@ -14,7 +14,7 @@ from orders import Order
 from dataloader import DataLoader
 from sizers import Sizer
 from utils import Bar, Logger, debug # noqa: F401
-from indicators import ATR
+
 
 exectypes = Order.ExecType
 
@@ -26,6 +26,7 @@ class Backtester:
     params = {
         'max_exposure' : 1
     }
+
 
     def __init__(self, start_date:str, end_date:str, max_exposure:float) -> None:
         
@@ -45,10 +46,6 @@ class Backtester:
         } # Stores Uninitialized Data
 
         self._alphas_uninit : List[Tuple[Alpha, Dict]] = [] # Stores Uninitialized Alphas
-        
-        self._test_signals : Dict[str, List[int]] = {}
-
-        self.atr = ATR('new atr', 14)
 
 
     def add_alpha(self, alpha:Alpha, **kwargs):
@@ -76,16 +73,17 @@ class Backtester:
         sig = inspect.signature(alpha.__init__)
 
         # Select arguments without default values
-        alpha_args = [name for name, param in sig.parameters.items() if param.default == inspect.Parameter.empty and name != 'self']
+        alpha_args = [name for name, param in sig.parameters.items() if (param.default == inspect.Parameter.empty) and (name != 'self') and (name != 'kwargs')]
 
         # Check if all required arguments are present in kwargs
         for arg in alpha_args:
-            assert arg in kwargs, f'Argument {arg} not found in kwargs'
+            assert arg in kwargs.keys(), f'Argument {arg} not found in kwargs'
 
         # Add Alpha and its arguments to self._alphas_uninit
         self._alphas_uninit.append((alpha, kwargs))
 
-        self.logger.info(f"Alpha `{kwargs['name']}` added.")
+        if kwargs.get('name'):
+            self.logger.info(f"Alpha `{kwargs['name']}` added.")
 
 
     def add_data(self, ticker:str, dataframe:pd.DataFrame, date_column_index=-1):
@@ -116,10 +114,6 @@ class Backtester:
             self._original_dfs = deepcopy(self.datas.dataframes)
             print('Initiating Backtest')
 
-        # Initiate empty lists for each ticker
-        for ticker in self.engine.tickers:
-            self._test_signals[ticker] = np.zeros(len(self.engine.portfolio.dataframe)) # Create a signal list of zeros
-
         # Iterate through each bar/index (timestamp) in the backtest range
         for bar_index in self.engine.portfolio.dataframe.index:
             date = self.engine.portfolio.dataframe.loc[bar_index, 'timestamp']
@@ -138,7 +132,7 @@ class Backtester:
                     resolution=self.datas.resolution,
                     ticker=ticker
                 )
-                self.atr.update(bar)
+
                 bars[ticker] = bar
 
             # If Date is not the first date
@@ -172,13 +166,7 @@ class Backtester:
                 for asset_name in allocation_matrix.keys():
                     allocation[asset_name] = allocation_matrix[asset_name][alpha.name]
 
-                alpha_long, alpha_short = alpha.next(eligibles=eligible_assets, datas=bars, allocation_per_ticker=allocation)
-
-                # Store Signals
-                for ticker in alpha_long:
-                    self._test_signals[ticker][bar_index] = 1
-                for ticker in alpha_short:
-                    self._test_signals[ticker][bar_index] = -1                  
+                alpha_long, alpha_short = alpha.next(eligibles=eligible_assets, datas=bars, allocation_per_ticker=allocation)            
 
                 non_eligible_assets = list(set(eligible_assets) - set(alpha_long + alpha_short))
                 for ticker in non_eligible_assets:
@@ -341,9 +329,11 @@ if __name__ == '__main__':
     dfs = []   
 
     # Create DataHandler
-    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.2)
+    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=1)
+
     # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
-    backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
+    # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
+    backtester.add_alpha(EmaCrossover, source='close', fast_length=5, slow_length=10, profit_perc=.1, loss_perc=.05)
 
     for ticker in tickers:
         try:
@@ -365,4 +355,3 @@ if __name__ == '__main__':
     # Pickle the instance
     with open('reporter.pkl', 'wb') as file:
         pickle.dump(reporter, file)
-

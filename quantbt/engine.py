@@ -431,7 +431,6 @@ class Engine:
 
 
 
-
     # METHODS FOR TRADE PROCESSING
     def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
         # If a price is not passed, use the bar's close price

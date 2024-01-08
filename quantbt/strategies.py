@@ -33,7 +33,7 @@ class BaseAlpha(Alpha):
             bar = datas[ticker]
 
             # Calculate Risk Amount based on allocation_per_ticker
-            risk_dollars =  self.sizer(bar)
+            risk_dollars =  self._calculate_asset_allocation(bar)
 
             # Tickers to Long
             if ticker in alpha_long:
@@ -181,7 +181,7 @@ class PipMinerStrategy(Alpha):
             bar = datas[ticker]
 
             # Calculate Risk Amount based on allocation_per_ticker
-            risk_dollars =  self.sizer(bar)
+            risk_dollars =  self._calculate_asset_allocation(bar)
 
             # Tickers to Long
             if ticker in alpha_long:

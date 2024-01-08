@@ -1,5 +1,7 @@
 import logging
 import os
+import string
+import random
 
 from bisect import bisect_right
 from datetime import datetime 
@@ -215,6 +217,10 @@ class Source:
         source = self.source
 
         if not isinstance(bar, Bar):
+            # If integer or float value is passed, return the same value
+            if isinstance(bar, int) or isinstance(bar, float):
+                return bar # If 
+            
             raise ValueError("Passed 'bar' argument is not a Bar object.")
         
         if not isinstance(source, str):
@@ -348,6 +354,14 @@ class Resolution:
             raise TypeError("unsupported operand type(s) for >=: 'Resolution' and '{}'".format(type(other).__name__))
 
 
+class DotDict(dict):
+    """dot.notation access to dictionary attributes"""
+    __getattr__ = dict.get
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+
+# FUNCTIONS
 def clear_terminal():
         # Check the operating system
         if os.name == "posix":  # For Linux and macOS
@@ -370,6 +384,15 @@ def debug(*texts):
 
         exit()
     
+
+def random_suffix(char_len:int=8):
+    """
+    Generate a random suffix
+    """
+    # using random.choices()
+    # generating random strings
+    return ''.join(random.choices(string.ascii_letters + string.digits , k=char_len))
+
 
 def sorted_index(array, value):
     # Inserts an item into an array in ascending order
