@@ -7,6 +7,7 @@ from orders import Order
 from trades import Trade
 from utils import Bar, Logger, DotDict
 from utils import debug, random_suffix   # noqa: F401
+# from utils_tv import na
 
 from typing import List, Dict, Tuple, Union
 from abc import ABC, abstractmethod
@@ -16,7 +17,7 @@ exectypes = Order.ExecType
 
 class Alpha(Observer, ABC):
 
-    logger = Logger('logger_alpha')
+    logger = Logger('logger_alpha', file_location='log_signals.log')
     parameters = DotDict({
     })
 
@@ -330,17 +331,15 @@ class EmaCrossover(Alpha):
         alpha_short = []
 
         for ticker in eligibles:
-            fast, slow = self.emas[ticker]
-
-            if (not fast[0]) or (not slow[0]):
-                break
+            fast, slow = self.emas.get(ticker)
 
             # Find Crossovers
             cross_long = (fast[0] > slow[0]) and (fast[1] <= slow[1])
-            cross_short = (fast[0] <= slow[0]) and (fast[1] > slow[1])
+            cross_short = (fast[0] < slow[0]) and (fast[1] >= slow[1])
 
             if cross_long:
                 alpha_long.append(ticker)
+        
             elif cross_short:
                 alpha_short.append(ticker)
 
@@ -368,6 +367,8 @@ class EmaCrossover(Alpha):
             for ema in ema_pair:
                 ema.update(bar)
                 warmed = warmed and ema.is_ready
+
+            self.logger.info(f"EMA : {ticker}. \nTime : {bar.timestamp} | Fast : {ema_pair[0][0]} | Slow : {ema_pair[1][0]}")
 
         return warmed
           

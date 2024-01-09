@@ -110,7 +110,7 @@ class Logger(logging.Logger):
 
         # Create and set the FileHandler with the custom formatter
         file_handler = logging.FileHandler(file_location)
-        file_handler.setLevel(logging.WARNING)  # Set the level for file logging
+        file_handler.setLevel(logging.INFO)  # Set the level for file logging
         file_handler.setFormatter(LogFormatter())
         self.addHandler(file_handler)
 

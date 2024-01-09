@@ -521,10 +521,11 @@ class Engine:
         self.trades[bar.ticker][self.trade_id] = new_trade
 
         # Add Trade Info to Logs
+        direction = 'LONG' if new_trade.direction == Order.Direction.Long else 'SHORT'
         self.logger.info(f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n')
         trade_log = \
             f'\n\n\n<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< TRADE {new_trade.id} OPENED >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n' + \
-            f'Trade {new_trade.id} Executed. (Entry Price : {order.price})\n' + \
+            f'Trade {new_trade.id} Executed [{direction}]. (Entry Price : {order.price})\n' + \
             f'{self.portfolio.dataframe.loc[bar.index]}'
         self.trade_logger.info(trade_log)
 

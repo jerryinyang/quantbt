@@ -300,11 +300,17 @@ if __name__ == '__main__':
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
 
-    start_date = '2023-06-01'
-    end_date = '2023-08-01'
+    start_date = '2022-01-01'
+    end_date = '2022-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
+        pass
+
+    with open('log_trades.log', 'w'):
+        pass
+
+    with open('log_signals.log', 'w'):
         pass
 
     # tickers = ['GOOGL'] # 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
@@ -324,7 +330,7 @@ if __name__ == '__main__':
     #     dfs.append(df)
     
     # FOR CRYPTO
-    tickers = ['BTCUSDT'] # 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
+    tickers = ['BTCUSDT_1D'] # 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
 
     dfs = []   
 
@@ -333,7 +339,7 @@ if __name__ == '__main__':
 
     # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
     # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
-    backtester.add_alpha(EmaCrossover, source='close', fast_length=5, slow_length=10, profit_perc=.1, loss_perc=.05)
+    backtester.add_alpha(EmaCrossover, source='close', fast_length=10, slow_length=20, profit_perc=.05, loss_perc=.01)
 
     for ticker in tickers:
         try:
