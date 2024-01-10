@@ -175,7 +175,7 @@ class Backtester:
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} open_pnl'] += 0
         
         if not analysis_mode:
-            print(f"Backtest Complete. Final Equity : {self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]}")
+            print(f"Backtest Complete. NET RETURN : {(self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]) - self.engine.CAPITAL}")
 
         return self.engine
 
@@ -301,7 +301,7 @@ if __name__ == '__main__':
     from utils import clear_terminal
 
     start_date = '2022-01-01'
-    end_date = '2022-12-31'
+    end_date = '2023-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -343,7 +343,7 @@ if __name__ == '__main__':
 
     for ticker in tickers:
         try:
-            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parqueet'
+            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parquet'
             df = pd.read_parquet(file_name)
         except Exception:
             file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.csv'

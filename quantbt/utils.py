@@ -100,9 +100,10 @@ class LogFormatter(logging.Formatter):
 
 class Logger(logging.Logger):
 
-    def __init__(self, name=__name__, file_location : str = 'logs.log', level=logging.DEBUG):
-        super().__init__(name, level)
+    def __init__(self, name=__name__, file_location : str = 'logs.log', level : Literal['debug', 'info', 'error', 'warning', 'critical'] = 'warning'):
+        level = self.__parse_level(level)
 
+        super().__init__(name, level)
         # Create and set the handler with the custom formatter
         custom_handler = logging.StreamHandler()
         custom_handler.setLevel(logging.WARNING)  # Set the level to the lowest level you want to capture
@@ -110,12 +111,29 @@ class Logger(logging.Logger):
 
         # Create and set the FileHandler with the custom formatter
         file_handler = logging.FileHandler(file_location)
-        file_handler.setLevel(logging.INFO)  # Set the level for file logging
+        file_handler.setLevel(level)  # Set the level for file logging
         file_handler.setFormatter(LogFormatter())
         self.addHandler(file_handler)
 
         # Add the handler to the logger
         self.addHandler(custom_handler)
+
+
+    def __parse_level(self, level : Literal['debug', 'info', 'error', 'warning', 'critical']):
+        level = level.lower()
+        
+        if level == 'critical':
+            return logging.CRITICAL
+        elif level == 'debug':
+            return logging.DEBUG
+        elif level == 'error':
+            return logging.ERROR
+        elif level == 'info':
+            return logging.INFO
+        else:
+            # Default : level == 'warning'
+            return logging.WARNING
+        
         
 
 class ObservableList(list):

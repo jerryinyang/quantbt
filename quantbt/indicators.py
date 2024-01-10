@@ -120,22 +120,35 @@ class EMA(Indicator):
         if any(tv.na(value) for value in self._window):
             return np.nan
 
+        # Calculate EMA value 
+        alpha = 2 / (self.params.period + 1)
+
+        # If EMA value has been previously calculated
+        previous_ema = self.value[0]
+        if not tv.na(previous_ema):
+            # Update the previous EMA value with the most recent data
+            ema = alpha * self._window[0] + (1 - alpha) * previous_ema
+
+            # Add new value to self.value        
+            self.value.appendleft(ema)
+            return ema
+            
+        # Else if EMA has not been previously calculated
         # Convert Data to list and reverse the order
         values = list(self._window)
         values.reverse()
 
-        # Calculate EMA value
-        ema  = [values[0]]  # Initial value is the same as the first values point
-        alpha = 2 / (len(values) + 1)
-
+        emas  = [values[0]]  # Initial value is the same as the first values point
         for i in range(1, len(values)):
-            ema_value = alpha * values[i] + (1 - alpha) * ema[i - 1]
-            ema.append(ema_value)
+            ema_value = alpha * values[i] + (1 - alpha) * emas[i - 1]
+            emas.append(ema_value)
+
+        ema = emas[-1]
 
         # Add new value to self.value        
-        self.value.appendleft(ema[-1])
+        self.value.appendleft(ema)
 
-        return ema[-1]     
+        return ema
 
 
     def _init_parameters(self, **kwargs):

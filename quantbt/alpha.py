@@ -284,7 +284,7 @@ class EmaCrossover(Alpha):
 
         # Decision-making / Signal-generating Algorithm
         alpha_long, alpha_short = self._signal_generator(eligibles)
-        eligible_assets = list(set(alpha_long + alpha_short))
+        eligible_assets = list(set(alpha_long + alpha_short)) # Eligible assets with signal
         
         for ticker in eligible_assets:
             bar = datas[ticker]
@@ -368,7 +368,7 @@ class EmaCrossover(Alpha):
                 ema.update(bar)
                 warmed = warmed and ema.is_ready
 
-            self.logger.info(f"EMA : {ticker}. \nTime : {bar.timestamp} | Fast : {ema_pair[0][0]} | Slow : {ema_pair[1][0]}")
+            self.logger.info(f"EMA : {ticker}. \nTime : {bar.timestamp} |  Fast : {ema_pair[0][0]} | Slow : {ema_pair[1][0]}")
 
         return warmed
           
@@ -398,7 +398,7 @@ class EmaCrossover(Alpha):
 
         # Calculate the risk amount, based on available balance and predefined allocations
         return balance * self._allocations[ticker]
-    
+
 
 class BaseAlpha(Alpha):
     def __init__(self, name : str, engine: Engine, profit_perc:float, loss_perc:float) -> None:
@@ -477,123 +477,3 @@ class BaseAlpha(Alpha):
 
     def warmup(self, datas: Dict[str, Bar]):
         return super()._warmup(datas)
-
-
-# class EmaCrossover(Alpha):
-#     params = {}
-        
-#     def __init__(self, name : str, engine: Engine, source :str, fast_length : float, slow_length : float, profit_perc:float, loss_perc:float) -> None:
-#         super().__init__(name, engine)
-
-#         self.source = source
-#         self.fast_length = min(fast_length, slow_length)
-#         self.slow_length = max(fast_length, slow_length)
-#         self.profit_perc = profit_perc
-#         self.loss_perc = loss_perc
-
-#         self.params['fast_length'] = self.fast_length
-#         self.params['slow_length'] = self.slow_length
-
-#         self.warmup_period = self.slow_length
-    
-#         self.emas : Dict[str, List[EMA, EMA]] = {}
-        
-#         # Create EMA Setup for all assets in the engine
-#         for ticker in engine.tickers:
-#             fast_ema = EMA(f"{ticker}_fast_ema", self.source, self.fast_length)
-#             slow_ema = EMA(f"{ticker}_slow_ema", self.source, self.slow_length)
-
-#             self.emas[ticker] = [fast_ema, slow_ema]            
-
-
-#     def compute_values(self, datas:Dict[str, Bar]):
-#         # Update Indicators Here, per ticker
-#         for ticker, ema_pair in self.emas.items():
-#             data = datas[ticker]
-#             # Update each ema with the ticker's data
-#             for ema in ema_pair:
-#                 ema.update(data)
-
-#                 # if 'slow_ema' in ema.name:
-#                 #     debug(ema.value, datas[ticker], self.warmup_period)
-
-
-#     def next(self, eligibles:List[str], datas:Dict[str, Bar], allocation_per_ticker:Dict[str, float]):
-#         if super().next(eligibles, datas, allocation_per_ticker):
-#             # Returns True if warmup period is active
-#             return [], []
-        
-#         if self.warmup_period:
-#             self.warmup
-        
-#         # Decision-making / Signal-generating Algorithm
-#         alpha_long, alpha_short = self.signal_generator(eligibles)
-#         eligible_assets = list(set(alpha_long + alpha_short))
-        
-#         for ticker in eligible_assets:
-#             bar = datas[ticker]
-
-#             # Calculate Risk Amount based on allocation_per_ticker
-#             risk_dollars =  self._calculate_asset_allocation(bar)
-
-#             # Tickers to Long
-#             if ticker in alpha_long:
-#                 entry_price = bar.close
-
-#                 position_size = risk_dollars / entry_price
-
-#                 exit_tp = entry_price * (1 + self.profit_perc)
-#                 exit_sl = entry_price * (1 - self.loss_perc)
-                
-#                 # Create and Send Long Order
-#                 self.buy(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)                    
-
-#                 # Tickers to Short
-#             elif ticker in alpha_short:
-#                 entry_price = bar.close
-#                 position_size = -1 * risk_dollars / entry_price
-
-#                 exit_tp = entry_price * (1 - self.profit_perc)
-#                 exit_sl = entry_price * (1 + self.loss_perc)
-                
-#                 # Create and Send Short Order
-#                 self.sell(bar, entry_price, position_size, exectypes.Market, exit_profit=exit_tp, exit_loss=exit_sl)
-
-#         return alpha_long, alpha_short 
-
-
-#     def signal_generator(self, eligibles:list[str]) -> tuple:        
-#         alpha_long = [] 
-#         alpha_short = []
-
-#         for ticker in eligibles:
-#             fast, slow = self.emas[ticker]
-
-#             if (not fast[0]) or (not slow[0]):
-#                 break
-
-#             # Find Crossovers
-#             cross_long = (fast[0] > slow[0]) and (fast[1] <= slow[1])
-#             cross_short = (fast[0] <= slow[0]) and (fast[1] > slow[1])
-
-#             if cross_long:
-#                 alpha_long.append(ticker)
-#             elif cross_short:
-#                 alpha_short.append(ticker)
-
-        
-#         return alpha_long, alpha_short  
-
-
-#     def reset_alpha(self, engine:Engine):
-#         '''
-#         Resets the alpha with a new engine.
-#         '''
-
-#         self.__init__(self.name, engine, self.source, self.fast_length, self.slow_length, self.profit_perc, self.loss_perc)
-#         self.logger.info(f'Alpha {self.name} successfully reset.')
-
-
-#     def warmup(self, datas: Dict[str, Bar]):
-#         self.warmup_period -= 1
-

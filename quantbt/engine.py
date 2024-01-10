@@ -16,7 +16,7 @@ exectypes = Order.ExecType
 
 class Engine:
     logger = Logger('logger_engine')
-    trade_logger = Logger('trade_event', 'log_trades.log')
+    trade_logger = Logger('trade_event', 'log_trades.log', level='info')
 
     CAPITAL = 100000
     PYRAMIDING = 1
