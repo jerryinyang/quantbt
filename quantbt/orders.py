@@ -35,7 +35,7 @@ class Order:
 
         self.id = id
         self.ticker = bar.ticker
-        self.direction = direction
+        self.direction : Order.Direction = direction
         self.timestamp = bar.timestamp
         self.size = size
 

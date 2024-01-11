@@ -294,14 +294,15 @@ if __name__ == '__main__':
     import yfinance as yf # noqa
     import pandas as pd
     import os # noqa
+    from models.pip_miner import PipMiner # noqa
     
     from alpha import BaseAlpha, EmaCrossover # noqa
-    from strategies import PipMinerStrategy # noqa
+    from strategies import PipMinerStrategy, PipMinerAlpha # noqa
     from reporters import AutoReporter  # noqa: F401
     from utils import clear_terminal
 
-    start_date = '2022-01-01'
-    end_date = '2023-12-31'
+    start_date = '2018-01-01'
+    end_date = '2018-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -312,6 +313,9 @@ if __name__ == '__main__':
 
     with open('log_signals.log', 'w'):
         pass
+
+    with open('/Users/jerryinyang/Code/quantbt/research/miner.pkl', 'rb') as f:
+        miner =  pickle.load(f)
 
     # tickers = ['GOOGL'] # 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
     # ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
@@ -330,34 +334,36 @@ if __name__ == '__main__':
     #     dfs.append(df)
     
     # FOR CRYPTO
-    tickers = ['BTCUSDT_1D'] # 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
+    tickers = ['BTCUSDT'] # 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
 
     dfs = []   
 
     # Create DataHandler
-    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=1)
+    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.01)
 
     # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
     # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)
-    backtester.add_alpha(EmaCrossover, source='close', fast_length=10, slow_length=20, profit_perc=.05, loss_perc=.01)
+    backtester.add_alpha(PipMinerAlpha, miner=miner)
 
     for ticker in tickers:
         try:
-            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parquet'
+            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parqueet'
             df = pd.read_parquet(file_name)
         except Exception:
             file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.csv'
             df = pd.read_csv(file_name)
         
         backtester.add_data(ticker=ticker, dataframe=df) #, date_column_index=0)
-    
 
     trades = backtester.backtest()
 
     # Use Reporter
-    reporter = AutoReporter('full', 'full')
+    reporter = AutoReporter('basic', 'basic')
     reporter.compute_report(backtester)
+    reporter.compute_earnings()
 
-    # Pickle the instance
-    with open('reporter.pkl', 'wb') as file:
-        pickle.dump(reporter, file)
+    reporter.plot_backtests()
+
+    # # Pickle the instance
+    # with open('reporter.pkl', 'wb') as file:
+    #     pickle.dump(reporter, file)

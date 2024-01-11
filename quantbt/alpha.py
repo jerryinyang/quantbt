@@ -51,7 +51,7 @@ class Alpha(Observer, ABC):
 
         # Store Trades, History
         self._orders : List[Order] = []
-        self._trades : Dict[str, Dict[int, Order]] = {key : {} for key in self.engine.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
+        self._trades : Dict[str, Dict[int, Trade]] = {key : {} for key in self.engine.tickers} # Syntax : Dict[ticker, Dict [ trade_id : Trade()]]
         self._history : List[Trade] = []
 
         # Store Allocations
@@ -207,7 +207,7 @@ class Alpha(Observer, ABC):
         self.cancel_order(self.engine.orders)
  
 
-    def close_trade(self, trade : Trade, bar, price : float ):
+    def close_trade(self, trade : Trade, bar, price : float):
         self.engine._close_trade(trade, bar, price)
 
 
