@@ -1,6 +1,6 @@
-import pandas as pd
 import numpy as np
-from utils import clear_terminal, debug # noqa
+import pandas as pd
+from utils import clear_terminal, debug  # noqa
 
 
 class GBM:

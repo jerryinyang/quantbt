@@ -12,5 +12,4 @@ __pycache__
 quantbt/models/*
 research/*
 !research/research.ipynb
-parth.py
-
+.ruffignore

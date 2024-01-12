@@ -1,14 +1,13 @@
 import random
-import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from copy import copy, deepcopy  # noqa
 from typing import Union
 
+import pandas as pd
 import synthesizers as synth
 from backtester import Backtester
-from reporters import AutoReporter
-
 from engine import Engine
-from copy import deepcopy, copy # noqa
+from reporters import AutoReporter
 from tqdm import tqdm
 
 
@@ -148,10 +147,10 @@ class Analyser:
 
 
 if __name__ == '__main__':
-    import yfinance as yf
     import os
     import pickle
-    
+
+    import yfinance as yf
     from alpha import BaseAlpha
     from dataloader import DataLoader
     from utils import clear_terminal

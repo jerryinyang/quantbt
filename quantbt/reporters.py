@@ -1,11 +1,12 @@
 import threading
-import pandas as pd
-import numpy as np
-import quantstats as qs
 
-from trades import Trade
-from portfolio import Portfolio
+import numpy as np
+import pandas as pd
+import quantstats as qs
 from backtester import Backtester
+from portfolio import Portfolio
+from trades import Trade
+
 
 class AutoReporter:
     def __init__(self, metrics_mode:str = 'basic', earnings_mode : str = 'full') -> None:

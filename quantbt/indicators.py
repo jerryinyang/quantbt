@@ -1,11 +1,10 @@
-import numpy as np
 from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, Literal, Union
 
+import numpy as np
 import utils_tv as tv
-from utils import Bar, Source, Logger, DotDict, debug # noqa
-from utils import random_suffix
+from utils import Bar, DotDict, Logger, Source, debug, random_suffix  # noqa
 
 
 class Indicator(ABC):
@@ -233,7 +232,7 @@ class EMA(Indicator):
 
 #         o : float = self._ema_o[0]
 #         h : float = self._ema_h[0]
-#         l : float = self._ema_l[0]  # noqa: E741
+#         l : float = self._ema_l[0]
 #         c : float = self._ema_c[0]     
 
 #         # Calculate the Heikin Ashi OHLC values from it
@@ -268,8 +267,8 @@ class EMA(Indicator):
 #             self._ema_c2.update(halow)
 
 #         o2 : float = self._ema_o2[0]
-#         h2 : float = self._ema_h2[0] # noqa
-#         l2 : float = self._ema_l2[0] # noqa
+#         h2 : float = self._ema_h2[0]
+#         l2 : float = self._ema_l2[0]
 #         c2 : float = self._ema_c2[0] 
 
 #         # Oscillator 

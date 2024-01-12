@@ -1,16 +1,18 @@
 from bisect import bisect_left, bisect_right
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from dataloader import DataLoader
-from portfolio import Portfolio
 from observers import Observer
-
 from orders import Order
+from portfolio import Portfolio
 from trades import Trade
-from utils import Bar, Logger
-from utils import ObservableList as olist 
-from utils import ObservableDict as odict 
-from utils import debug  # noqa: F401
+from utils import (
+    Bar,
+    Logger,
+    debug,  # noqa: F401
+)
+from utils import ObservableDict as odict
+from utils import ObservableList as olist
 
 exectypes = Order.ExecType
 
@@ -155,11 +157,11 @@ class Engine:
 
 
     # METHODS FOR ORDER PROCESSING
-    def buy(self, bar, price, size:float, exectype:Order.ExecType, 
-            stoplimit_price:float=None, parent_id:str=None,
-            exit_profit:float=None, exit_loss:float=None,
-            exit_profit_percent:float=None, exit_loss_percent:float=None,
-            trailing_percent:float=None, family_role=None, 
+    def buy(self, bar, price, size: Optional[float], exectype:Order.ExecType, 
+            stoplimit_price:Optional[float]=None, parent_id:Optional[str]=None,
+            exit_profit: Optional[float]=None, exit_loss: Optional[float]=None,
+            exit_profit_percent: Optional[float]=None, exit_loss_percent: Optional[float]=None,
+            trailing_percent: Optional[float]=None, family_role=None, 
             expiry_date=None, alpha_name=None) -> Order:
         
         
@@ -180,11 +182,11 @@ class Engine:
         return None 
     
 
-    def sell(self, bar, price, size:float, exectype:Order.ExecType, 
-            stoplimit_price:float=None, parent_id:str=None,
-            exit_profit:float=None, exit_loss:float=None,
-            exit_profit_percent:float=None, exit_loss_percent:float=None,
-            trailing_percent:float=None, family_role=None, 
+    def sell(self, bar, price, size: Optional[float], exectype:Order.ExecType, 
+            stoplimit_price: Optional[float]=None, parent_id: Optional[str]=None,
+            exit_profit: Optional[float]=None, exit_loss: Optional[float]=None,
+            exit_profit_percent: Optional[float]=None, exit_loss_percent: Optional[float]=None,
+            trailing_percent: Optional[float]=None, family_role=None, 
             expiry_date=None, alpha_name=None) -> Order:
         
         if size:
@@ -337,7 +339,7 @@ class Engine:
             self.logger.info(f'Order {order.id} Expired.')
 
 
-    def _cancel_order(self, order:Order | List[Order], message:str=None):   
+    def _cancel_order(self, order:Order | List[Order], message: Optional[str]=None):   
         # If a list is passed, recursively cancel each order
         if isinstance(order, list):
             for _order in order:
@@ -376,7 +378,7 @@ class Engine:
             self.logger.info(f'Order {order.id} Filled Successfully.')
 
 
-    def _reject_order(self, order:Order | List[Order], message:str=None):
+    def _reject_order(self, order:Order | List[Order], message: Optional[str]=None):
          # If a list is passed, recursively reject each order
         if isinstance(order, list):
             for _order in order:
@@ -391,7 +393,7 @@ class Engine:
             self.logger.info(f'Order {order.id} Rejected.' + message)
 
     
-    def _recalculate_market_order_size(self, order:Order, bar:Bar, fill_price:float):
+    def _recalculate_market_order_size(self, order:Order, bar:Bar, fill_price: Optional[float]):
         '''
         For market orders, the order size should be recalculated based on the fill price, to account for gaps in the market.
         '''
@@ -432,7 +434,7 @@ class Engine:
 
 
     # METHODS FOR TRADE PROCESSING
-    def _update_trade(self, trade:Trade, bar:Bar, price:float=None):
+    def _update_trade(self, trade:Trade, bar:Bar, price: Optional[float]=None):
         # If a price is not passed, use the bar's close price
         price = price or bar.close
 
@@ -544,7 +546,7 @@ class Engine:
         return new_trade
 
 
-    def _close_trade(self, trade:Trade, bar:Bar, price:float=None):
+    def _close_trade(self, trade:Trade, bar:Bar, price: Optional[float]=None):
 
         # Update the Trade
         self._update_trade(trade, bar, price)
@@ -576,7 +578,7 @@ class Engine:
         self.trade_logger.info(trade_log)
 
     
-    def count_active_trades(self, ticker:str=None, alpha_name:str=None):  
+    def count_active_trades(self, ticker: Optional[str]=None, alpha_name: Optional[str]=None):  
         # If ticker is passed       
         if ticker is not None:
             if ticker not in self.tickers:

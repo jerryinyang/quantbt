@@ -1,10 +1,8 @@
 [tool.ruff]
-
-# Exclude a variety of commonly ignored directories.
-
-extend-include = [
+extend-select = ["I", "RUF"]
+ignore = ["D100", "D211", "D212", "RUF012"]
+extend-exclude = [
     ".env", 
-    "root.tmp", 
     "test.ipynb", 
     "*.vuerd.json", 
     "*.csv", 
@@ -15,5 +13,5 @@ extend-include = [
     "/databento", 
     "*.log", 
     "__init__.py",
-    "~/anaconda3/envs/",
+    "polo"
 ]

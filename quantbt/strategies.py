@@ -2,17 +2,17 @@
 CUSTOM STRATEGIES (ALPHAS) AND THEIR DEPENDENCIES
 '''
 
-import numpy as np
 from collections import deque
 from copy import deepcopy
-from typing import List, Dict
+from typing import Dict, List
 
+import numpy as np
 from alpha import Alpha
 from engine import Engine
 from models.pip_miner import PipMiner
 from orders import Order
-from utils import Bar, DotDict, debug # noqa: F401
-from utils_tv import na #noqa: F401
+from utils import Bar, DotDict, debug  # noqa: F401
+from utils_tv import na
 
 exectypes = Order.ExecType
 

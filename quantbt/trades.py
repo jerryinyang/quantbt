@@ -1,4 +1,5 @@
 from enum import Enum
+
 from orders import Order
 from utils import Bar
 

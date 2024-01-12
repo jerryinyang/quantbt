@@ -1,8 +1,7 @@
-import pandas as pd
-
-from typing import List
 from collections import OrderedDict, namedtuple
+from typing import List
 
+import pandas as pd
 from dataloader import DataLoader
 from utils import Logger
 

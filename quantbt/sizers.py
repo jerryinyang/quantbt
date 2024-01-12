@@ -2,6 +2,7 @@ from alpha import Alpha
 from engine import Engine
 from utils import Logger
 
+
 class Sizer:
     logger = Logger('logger_sizer')
 

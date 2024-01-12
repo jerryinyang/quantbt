@@ -1,9 +1,10 @@
 import datetime
-from dotenv import load_dotenv, dotenv_values
-import requests
 import json
 import time
+
 import pandas as pd
+import requests
+from dotenv import dotenv_values, load_dotenv
 
 # Load Environment Variables
 load_dotenv()

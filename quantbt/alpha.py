@@ -1,17 +1,15 @@
-import numpy as np
+from abc import ABC, abstractmethod
 
+# from utils_tv import na
+from typing import Dict, List, Optional, Tuple, Union
+
+import numpy as np
 from engine import Engine
 from indicators import EMA
 from observers import Observer
 from orders import Order
 from trades import Trade
-from utils import Bar, Logger, DotDict
-from utils import debug, random_suffix   # noqa: F401
-# from utils_tv import na
-
-from typing import List, Dict, Tuple, Union
-from abc import ABC, abstractmethod
-
+from utils import Bar, DotDict, Logger, debug, random_suffix  # noqa: F401
 
 exectypes = Order.ExecType
 
@@ -166,10 +164,10 @@ class Alpha(Observer, ABC):
 
     # region --- HANDLE ORDERS AND TRADES
     def buy(self, bar, price, size:float, exectype:Order.ExecType, 
-            stoplimit_price:float=None, parent_id:str=None,
-            exit_profit:float=None, exit_loss:float=None,
-            exit_profit_percent:float=None, exit_loss_percent:float=None,
-            trailing_percent:float=None, family_role=None, 
+            stoplimit_price:Optional[float]=None, parent_id:Optional[str]=None,
+            exit_profit:Optional[float]=None, exit_loss:Optional[float]=None,
+            exit_profit_percent:Optional[float]=None, exit_loss_percent:Optional[float]=None,
+            trailing_percent:Optional[float]=None, family_role=None, 
             expiry_date=None) -> Order:
 
         return self.engine.buy(
@@ -183,10 +181,10 @@ class Alpha(Observer, ABC):
 
 
     def sell(self, bar, price, size:float, exectype:Order.ExecType, 
-            stoplimit_price:float=None, parent_id:str=None,
-            exit_profit:float=None, exit_loss:float=None,
-            exit_profit_percent:float=None, exit_loss_percent:float=None,
-            trailing_percent:float=None, family_role=None, 
+            stoplimit_price:Optional[float]=None, parent_id:Optional[str]=None,
+            exit_profit:Optional[float]=None, exit_loss:Optional[float]=None,
+            exit_profit_percent:Optional[float]=None, exit_loss_percent:Optional[float]=None,
+            trailing_percent:Optional[float]=None, family_role=None, 
             expiry_date=None) -> Order:
         
         return self.engine.sell(

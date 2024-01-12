@@ -1,8 +1,9 @@
-from enum import Enum
-from typing import Any
-from utils import Bar
-from dateutil.parser import parse
 from datetime import datetime
+from enum import Enum
+from typing import Any, Optional
+
+from dateutil.parser import parse
+from utils import Bar
 
 
 class Order:
@@ -18,13 +19,13 @@ class Order:
         price,
         exectype,
         size,
-        stoplimit_price: float = None,
-        parent_id: int = None,
-        exit_profit: float = None,
-        exit_loss: float = None,
-        exit_profit_percent:float=None,
-        exit_loss_percent:float=None,
-        trailing_percent: float = None,
+        stoplimit_price: Optional[float] = None,
+        parent_id: Optional[int] = None,
+        exit_profit: Optional[float] = None,
+        exit_loss: Optional[float] = None,
+        exit_profit_percent: Optional[float]=None,
+        exit_loss_percent: Optional[float]=None,
+        trailing_percent: Optional[float] = None,
         family_role=None,
         expiry_date=None,
         alpha_name=None

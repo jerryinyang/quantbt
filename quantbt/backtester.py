@@ -1,20 +1,18 @@
 import inspect
-import uuid
 import pickle
-import pandas as pd
-import numpy as np # noqa
-
-from typing import List, Dict, Literal, Tuple
-from copy import deepcopy, copy
+import uuid
+from copy import copy, deepcopy
 from pathlib import Path
+from typing import Dict, List, Literal, Tuple
 
-from engine import Engine
+import numpy as np  # noqa
+import pandas as pd
 from alpha import Alpha
-from orders import Order
 from dataloader import DataLoader
+from engine import Engine
+from orders import Order
 from sizers import Sizer
-from utils import Bar, Logger, debug # noqa: F401
-
+from utils import Bar, Logger, debug  # noqa: F401
 
 exectypes = Order.ExecType
 
@@ -298,7 +296,7 @@ if __name__ == '__main__':
     
     from alpha import BaseAlpha, EmaCrossover # noqa
     from strategies import PipMinerStrategy, PipMinerAlpha # noqa
-    from reporters import AutoReporter  # noqa: F401
+    from reporters import AutoReporter
     from utils import clear_terminal
 
     start_date = '2018-01-01'

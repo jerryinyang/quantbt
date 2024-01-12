@@ -1,10 +1,10 @@
+from typing import Dict
+
 import pandas as pd
 import pytz
-
 from dateutil.parser import parse
-from typing import Dict
-from utils import Resolution
-from utils import debug, clear_terminal # noqa
+from utils import Resolution, clear_terminal, debug  # noqa
+
 
 class DataLoader:
     TZ = pytz.timezone('UTC')
