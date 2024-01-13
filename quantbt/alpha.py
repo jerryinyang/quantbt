@@ -177,7 +177,7 @@ class Alpha(Observer, ABC):
             exit_profit_percent, exit_loss_percent,
             trailing_percent, family_role, 
             expiry_date, alpha_name=self.name
-        ) 
+        )
 
 
     def sell(self, bar, price, size:float, exectype:Order.ExecType, 
