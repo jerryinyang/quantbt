@@ -9,7 +9,7 @@ from typing import Dict, List
 import numpy as np
 from alpha import Alpha
 from engine import Engine
-from models.pip_miner import PipMiner
+from models.pip_miner import PipMiner, PipMinerMulti
 from orders import Order
 from utils import Bar, DotDict, debug  # noqa: F401
 from utils_tv import na
@@ -220,7 +220,7 @@ class PipMinerAlpha(Alpha):
     })
     params = parameters
 
-    def __init__(self, engine:Engine, miner : PipMiner, **kwargs) -> None:
+    def __init__(self, engine:Engine, miner : PipMinerMulti, **kwargs) -> None:
         '''
         This class handles the creating and sending of orders to the engine
         Arguments: 

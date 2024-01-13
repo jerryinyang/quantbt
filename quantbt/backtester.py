@@ -289,14 +289,14 @@ class Backtester:
 
 
 if __name__ == '__main__':
-    import yfinance as yf # noqa
+    import os  # noqa
+
     import pandas as pd
-    import os # noqa
-    from models.pip_miner import PipMiner # noqa
-    
-    from alpha import BaseAlpha, EmaCrossover # noqa
-    from strategies import PipMinerStrategy, PipMinerAlpha # noqa
+    import yfinance as yf  # noqa
+    from alpha import BaseAlpha, EmaCrossover  # noqa
+    from models.pip_miner import PipMiner, PipMinerMulti  # noqa
     from reporters import AutoReporter
+    from strategies import PipMinerAlpha, PipMinerStrategy  # noqa
     from utils import clear_terminal
 
     start_date = '2018-01-01'
@@ -314,6 +314,8 @@ if __name__ == '__main__':
 
     with open('/Users/jerryinyang/Code/quantbt/research/miner.pkl', 'rb') as f:
         miner =  pickle.load(f)
+    # with open('/Users/jerryinyang/Code/quantbt/research/miner_multi.pkl', 'rb') as f:
+    #     miner =  pickle.load(f)
 
     # tickers = ['GOOGL'] # 'GOOG', 'TSLA', 'MSFT', 'META', 'GOOGL', 'NVDA', 'AMZN', 'UNH']
     # ticker_path = [f'data/prices/{ticker}.csv' for ticker in tickers]
@@ -345,7 +347,7 @@ if __name__ == '__main__':
 
     for ticker in tickers:
         try:
-            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parqueet'
+            file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.parquet'
             df = pd.read_parquet(file_name)
         except Exception:
             file_name = f'/Users/jerryinyang/Code/quantbt/data/prices/{ticker}.csv'

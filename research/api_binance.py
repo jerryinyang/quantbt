@@ -45,7 +45,7 @@ def fetch_crypto_data(symbol, resolution, start_time = datetime.datetime.now() -
     df['date'] = timestamps
     df.set_index('date', inplace=True)
 
-    df.to_parquet(f'/Users/jerryinyang/Code/quantbt/data/prices/{symbol}_1D.parquet')
+    df.to_parquet(f'/Users/jerryinyang/Code/quantbt/data/prices/{symbol}_latest.parquet')
 
     return df
 
@@ -57,6 +57,7 @@ if __name__ == '__main__':
 
         # Define the start and end times for the data
         end_time = datetime.datetime.now()
-        start_time = end_time - datetime.timedelta(days=365 * 6)
-
-        _ = fetch_crypto_data(symbol, '1d', start_time, end_time)
+        # start_time = end_time - datetime.timedelta(days=365 * 6)
+        start_time = datetime.datetime(2023, 12, 1)
+        
+        _ = fetch_crypto_data(symbol, '1h', start_time, end_time)
