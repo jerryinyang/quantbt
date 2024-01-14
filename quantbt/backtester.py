@@ -172,6 +172,9 @@ class Backtester:
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} units'] += 0
                     self.engine.portfolio.dataframe.loc[bar_index, f'{ticker} open_pnl'] += 0
         
+        for alpha in self.alphas:
+            alpha.stop()
+
         if not analysis_mode:
             print(f"Backtest Complete. NET RETURN : {(self.engine.portfolio.dataframe.iloc[-1, self.engine.portfolio.dataframe.columns.get_loc('balance')]) - self.engine.CAPITAL}")
 
@@ -293,14 +296,13 @@ if __name__ == '__main__':
 
     import pandas as pd
     import yfinance as yf  # noqa
-    from alpha import BaseAlpha, EmaCrossover  # noqa
     from models.pip_miner import PipMiner, PipMinerMulti  # noqa
     from reporters import AutoReporter
-    from strategies import PipMinerAlpha, PipMinerStrategy  # noqa
+    from strategies import PipMinerAlpha
     from utils import clear_terminal
 
     start_date = '2018-01-01'
-    end_date = '2018-12-31'
+    end_date = '2022-12-31'
 
     clear_terminal()
     with open('logs.log', 'w'):
@@ -314,6 +316,7 @@ if __name__ == '__main__':
 
     with open('/Users/jerryinyang/Code/quantbt/research/miner.pkl', 'rb') as f:
         miner =  pickle.load(f)
+
     # with open('/Users/jerryinyang/Code/quantbt/research/miner_multi.pkl', 'rb') as f:
     #     miner =  pickle.load(f)
 
@@ -336,10 +339,8 @@ if __name__ == '__main__':
     # FOR CRYPTO
     tickers = ['BTCUSDT'] # 'DOGEUSDT', 'ETHUSDT', 'GMTUSDT', 'SOLUSDT']
 
-    dfs = []   
-
     # Create DataHandler
-    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.01)
+    backtester = Backtester(start_date=start_date, end_date=end_date, max_exposure=.1)
 
     # backtester.add_alpha(PipMinerStrategy, name='pip_miner', n_pivots=5, lookback=24, hold_period=6, n_clusters=85, train_split_percent=.6)
     # backtester.add_alpha(BaseAlpha, name='base_alpha', profit_perc=.1, loss_perc=.05)

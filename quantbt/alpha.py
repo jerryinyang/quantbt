@@ -157,6 +157,10 @@ class Alpha(Observer, ABC):
                 self._history.append(trade)
 
 
+    def stop(self):
+        pass
+
+
     # Observer.update()
     def update(self, value : Union[Order,Trade]):
         self._update_positions(value=value)
@@ -203,10 +207,57 @@ class Alpha(Observer, ABC):
 
     def cancel_all_orders(self):
         self.cancel_order(self.engine.orders)
- 
 
-    def close_trade(self, trade : Trade, bar, price : float):
-        self.engine._close_trade(trade, bar, price)
+    
+    def close_trade(self, bar: Bar, trade: Trade, **kwargs):
+        """
+        Reverse a position. Creates an opposite child order with the same size.
+
+        Parameters:
+        - bar (Bar): The bar at which the closing order is executed.
+        - trade (Trade): The trade to be closed, representing the open position.
+        - **kwargs (dict): Additional keyword arguments for configuring the closing order.
+
+        Keyword Arguments:
+        - size (int): The size of the closing order. Default is the same size as the entry.
+        - family_role (str): The role of the order within the order family (e.g., ChildExit).
+        - price (float): The price at which the closing order should be executed.
+        - exectype (str): The execution type of the closing order (e.g., Market).
+        - stoplimit_price (float): The stop-limit price for the closing order.
+        - exit_profit (float): The specified exit profit for the closing order.
+        - exit_loss (float): The specified exit loss for the closing order.
+        - exit_profit_percent (float): The exit profit as a percentage of the entry price.
+        - exit_loss_percent (float): The exit loss as a percentage of the entry price.
+        - trailing_percent (float): The trailing percentage for a trailing stop order.
+        - alpha_name (str): The name of the alpha strategy associated with this order.
+
+        Returns:
+        - Order: The created closing order.
+
+        Example:
+        close_order = strategy.close(current_bar, open_trade, price=120.0, exit_profit=5.0)
+        """
+        
+        # Compute the exit params 
+        exit_params = {
+            "size": trade.size,  # Default size should be the same size of the entry
+            "parent_id": trade.id,
+            "family_role": Order.FamilyRole.ChildExit,
+
+            "price": kwargs.get('price', None),
+            "exectype": kwargs.get('exectype', Order.ExecType.Market),
+            "stoplimit_price": kwargs.get('stoplimit_price', None),
+            "exit_profit": kwargs.get('exit_profit', None),
+            "exit_loss": kwargs.get('exit_loss', None),
+            "exit_profit_percent": kwargs.get('exit_profit_percent', None),
+            "exit_loss_percent": kwargs.get('exit_loss_percent', None),
+            "trailing_percent": kwargs.get('trailing_percent', None),
+        }
+
+        if trade.direction == Order.Direction.Long:
+            return self.sell(bar, **exit_params)
+        else:
+            return self.buy(bar, **exit_params)
 
 
     def close_all_trades(self, bars:Dict[str, Bar]):
@@ -221,6 +272,8 @@ class Alpha(Observer, ABC):
             # Close Each Open Trade
             for trade in trades:
                 self.close_trade(trade, bar, price)
+
+
 
     # endregion
 

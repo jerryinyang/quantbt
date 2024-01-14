@@ -4,3 +4,5 @@
     * Sum of all martins scores
     * Average Martin scores
 - For PipMinerMulti, try allowing more than one cluster type for Long and Short
+
+- Investigate the cause for the different in the performance between model performance and backtester performance

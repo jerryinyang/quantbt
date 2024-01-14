@@ -6,6 +6,7 @@ import quantstats as qs
 from backtester import Backtester
 from portfolio import Portfolio
 from trades import Trade
+from utils import debug  #noqa
 
 
 class AutoReporter:
